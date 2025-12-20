@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -9,6 +10,7 @@ import { toast } from 'sonner'
 
 export default function AuthPage() {
   const router = useRouter()
+  const t = useTranslations('auth')
   const [step, setStep] = useState<'email' | 'code'>('email')
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
@@ -16,7 +18,7 @@ export default function AuthPage() {
 
   async function handleSendCode() {
     if (!email.trim() || !email.includes('@')) {
-      toast.error('Please enter a valid email address')
+      toast.error(t('errorInvalidEmail'))
       return
     }
 
@@ -26,13 +28,13 @@ export default function AuthPage() {
     setTimeout(() => {
       setIsLoading(false)
       setStep('code')
-      toast.success('Check your email for the code')
+      toast.success(t('successCheckEmail'))
     }, 1000)
   }
 
   async function handleVerifyCode() {
     if (!code.trim() || code.length < 6) {
-      toast.error('Please enter the 6-digit code')
+      toast.error(t('errorInvalidCode'))
       return
     }
 
@@ -41,7 +43,7 @@ export default function AuthPage() {
     // Mock API call - in production this would verify the code
     setTimeout(() => {
       setIsLoading(false)
-      toast.success('Welcome!')
+      toast.success(t('successWelcome'))
       router.push('/agents')
     }, 1000)
   }
@@ -51,10 +53,10 @@ export default function AuthPage() {
       <div className="w-full max-w-md">
         <div className="mb-12 text-center">
           <h1 className="text-foreground mb-2 text-4xl font-semibold tracking-tight">
-            Welcome to Cesar
+            {t('title')}
           </h1>
           <p className="text-muted-foreground text-sm">
-            {step === 'email' ? 'Sign in or create an account' : 'Enter the code we sent you'}
+            {step === 'email' ? t('signInSubtitle') : t('codeSubtitle')}
           </p>
         </div>
 
@@ -62,10 +64,12 @@ export default function AuthPage() {
           {step === 'email' ? (
             <div className="space-y-6">
               <div>
-                <Label className="text-foreground mb-3 block text-sm font-medium">Email</Label>
+                <Label className="text-foreground mb-3 block text-sm font-medium">
+                  {t('email')}
+                </Label>
                 <Input
                   type="email"
-                  placeholder="you@example.com"
+                  placeholder={t('emailPlaceholder')}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSendCode()}
@@ -74,42 +78,44 @@ export default function AuthPage() {
               </div>
 
               <Button onClick={handleSendCode} disabled={isLoading} className="w-full" size="lg">
-                {isLoading ? 'Sending...' : 'Continue'}
+                {isLoading ? t('sending') : t('continue')}
               </Button>
             </div>
           ) : (
             <div className="space-y-6">
               <div>
                 <div className="mb-3 flex items-center justify-between">
-                  <Label className="text-foreground text-sm font-medium">Verification Code</Label>
+                  <Label className="text-foreground text-sm font-medium">
+                    {t('verificationCode')}
+                  </Label>
                   <button
                     onClick={() => setStep('email')}
                     className="text-muted-foreground hover:text-foreground text-xs transition-colors"
                   >
-                    Change email
+                    {t('changeEmail')}
                   </button>
                 </div>
                 <Input
                   type="text"
-                  placeholder="123456"
+                  placeholder={t('codePlaceholder')}
                   value={code}
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   onKeyDown={(e) => e.key === 'Enter' && handleVerifyCode()}
                   autoFocus
                   maxLength={6}
                 />
-                <p className="text-muted-foreground mt-2 text-xs">Sent to {email}</p>
+                <p className="text-muted-foreground mt-2 text-xs">{t('sentTo', { email })}</p>
               </div>
 
               <Button onClick={handleVerifyCode} disabled={isLoading} className="w-full" size="lg">
-                {isLoading ? 'Verifying...' : 'Verify'}
+                {isLoading ? t('verifying') : t('verify')}
               </Button>
 
               <button
                 onClick={handleSendCode}
                 className="text-muted-foreground hover:text-foreground w-full text-sm transition-colors"
               >
-                Resend code
+                {t('resendCode')}
               </button>
             </div>
           )}

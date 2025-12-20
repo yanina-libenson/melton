@@ -2,12 +2,15 @@
 
 import { useState, use, useRef, useEffect } from 'react'
 import Link from 'next/link'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { mockAgents } from '@/lib/mock-data'
 import { Agent, Message } from '@/lib/types'
 
 export default function TestPlaygroundPage({ params }: { params: Promise<{ id: string }> }) {
+  const t = useTranslations('test')
+  const tCommon = useTranslations('common')
   const resolvedParams = use(params)
   const [agent] = useState<Agent | null>(() => {
     return mockAgents.find((a) => a.id === resolvedParams.id) || null
@@ -17,7 +20,7 @@ export default function TestPlaygroundPage({ params }: { params: Promise<{ id: s
     {
       id: 'msg-welcome',
       role: 'system',
-      content: 'Test playground started. Send a message to test your agent.',
+      content: t('welcomeMessage'),
       timestamp: new Date().toISOString(),
     },
   ])
@@ -52,7 +55,7 @@ export default function TestPlaygroundPage({ params }: { params: Promise<{ id: s
       const agentResponse: Message = {
         id: `msg-${Date.now()}-response`,
         role: 'agent',
-        content: `This is a mock response from ${agent?.name}. In production, this would be powered by Claude Sonnet 4 using your configured instructions and tools.`,
+        content: t('mockResponse', { agentName: agent?.name || 'Agent' }),
         timestamp: new Date().toISOString(),
       }
 
@@ -91,7 +94,7 @@ export default function TestPlaygroundPage({ params }: { params: Promise<{ id: s
   if (!agent) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <p className="text-muted-foreground font-light">Agent not found</p>
+        <p className="text-muted-foreground font-light">{t('agentNotFound')}</p>
       </div>
     )
   }
@@ -103,12 +106,12 @@ export default function TestPlaygroundPage({ params }: { params: Promise<{ id: s
         <div className="mx-auto flex max-w-4xl items-center justify-between">
           <div>
             <h1 className="text-foreground text-3xl font-semibold tracking-tight">
-              Test {agent.name}
+              {t('title', { agentName: agent.name })}
             </h1>
-            <p className="text-muted-foreground mt-1 text-sm">Try your agent before deploying</p>
+            <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
           </div>
           <Link href={`/agents/${agent.id}`}>
-            <Button variant="ghost">Back</Button>
+            <Button variant="ghost">{tCommon('back')}</Button>
           </Link>
         </div>
       </div>
@@ -148,7 +151,7 @@ export default function TestPlaygroundPage({ params }: { params: Promise<{ id: s
                                 className="bg-background text-foreground border-border mb-2 rounded border p-3 text-xs"
                               >
                                 <div className="text-muted-foreground mb-2 flex items-center gap-2">
-                                  <span>Used {toolCall.toolName}</span>
+                                  <span>{t('usedTool', { toolName: toolCall.toolName })}</span>
                                 </div>
                               </div>
                             ))}
@@ -187,7 +190,7 @@ export default function TestPlaygroundPage({ params }: { params: Promise<{ id: s
         <div className="border-border border-t px-8 py-6">
           <div className="mx-auto flex max-w-4xl gap-4">
             <Input
-              placeholder="Type a message..."
+              placeholder={t('messagePlaceholder')}
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={handleKeyPress}
@@ -200,7 +203,7 @@ export default function TestPlaygroundPage({ params }: { params: Promise<{ id: s
               size="lg"
               className="px-8"
             >
-              Send
+              {tCommon('send')}
             </Button>
           </div>
         </div>

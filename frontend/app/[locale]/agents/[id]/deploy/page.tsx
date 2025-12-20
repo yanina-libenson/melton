@@ -2,6 +2,7 @@
 
 import { useState, use } from 'react'
 import Link from 'next/link'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,6 +12,7 @@ import { Agent } from '@/lib/types'
 import { toast } from 'sonner'
 
 export default function DeployPage({ params }: { params: Promise<{ id: string }> }) {
+  const t = useTranslations('deploy')
   const resolvedParams = use(params)
   const [agent] = useState<Agent | null>(() => {
     return mockAgents.find((a) => a.id === resolvedParams.id) || null
@@ -24,7 +26,7 @@ export default function DeployPage({ params }: { params: Promise<{ id: string }>
   if (!agent) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <p className="text-muted-foreground font-light">Agent not found</p>
+        <p className="text-muted-foreground font-light">{t('agentNotFound')}</p>
       </div>
     )
   }
@@ -41,28 +43,28 @@ export default function DeployPage({ params }: { params: Promise<{ id: string }>
   function copyEmbedCode() {
     navigator.clipboard.writeText(embedCode)
     setEmbedCopied(true)
-    toast.success('Embed code copied to clipboard')
+    toast.success(t('successEmbedCopied'))
     setTimeout(() => setEmbedCopied(false), 2000)
   }
 
   function connectWhatsApp() {
     if (!whatsappNumber.trim()) {
-      toast.error('Please enter a WhatsApp Business number')
+      toast.error(t('errorWhatsappRequired'))
       return
     }
-    toast.success('WhatsApp connected successfully')
+    toast.success(t('successWhatsappConnected'))
   }
 
   function connectEmail() {
     if (!emailAddress.trim()) {
-      toast.error('Please enter an email address')
+      toast.error(t('errorEmailRequired'))
       return
     }
-    toast.success('Email integration configured successfully')
+    toast.success(t('successEmailConnected'))
   }
 
   function activateAgent() {
-    toast.success('Agent activated')
+    toast.success(t('successAgentActivated'))
   }
 
   return (
@@ -79,11 +81,9 @@ export default function DeployPage({ params }: { params: Promise<{ id: string }>
         {/* Header */}
         <div className="mb-12">
           <h1 className="text-foreground mb-2 text-4xl font-semibold tracking-tight">
-            Connect {agent.name}
+            {t('title', { agentName: agent.name })}
           </h1>
-          <p className="text-muted-foreground text-sm">
-            Choose how customers will reach your agent
-          </p>
+          <p className="text-muted-foreground text-sm">{t('subtitle')}</p>
         </div>
 
         {/* Channel Selection */}
@@ -97,7 +97,7 @@ export default function DeployPage({ params }: { params: Promise<{ id: string }>
                   : 'border-border bg-card shadow-soft-xs hover:shadow-soft-sm hover:border-border'
               }`}
             >
-              <p className="text-foreground text-sm font-medium">Live Chat</p>
+              <p className="text-foreground text-sm font-medium">{t('liveChat')}</p>
             </button>
             <button
               onClick={() => setActiveTab('whatsapp')}
@@ -107,7 +107,7 @@ export default function DeployPage({ params }: { params: Promise<{ id: string }>
                   : 'border-border bg-card shadow-soft-xs hover:shadow-soft-sm hover:border-border'
               }`}
             >
-              <p className="text-foreground text-sm font-medium">WhatsApp</p>
+              <p className="text-foreground text-sm font-medium">{t('whatsapp')}</p>
             </button>
             <button
               onClick={() => setActiveTab('email')}
@@ -117,7 +117,7 @@ export default function DeployPage({ params }: { params: Promise<{ id: string }>
                   : 'border-border bg-card shadow-soft-xs hover:shadow-soft-sm hover:border-border'
               }`}
             >
-              <p className="text-foreground text-sm font-medium">Email</p>
+              <p className="text-foreground text-sm font-medium">{t('email')}</p>
             </button>
           </div>
 
@@ -128,10 +128,10 @@ export default function DeployPage({ params }: { params: Promise<{ id: string }>
             {/* Live Chat Tab */}
             <TabsContent value="live-chat" className="space-y-12">
               <div>
-                <Label className="text-foreground mb-3 block text-sm font-medium">Embed Code</Label>
-                <p className="text-muted-foreground mb-6 text-xs">
-                  Add this code to your website before the closing &lt;/body&gt; tag
-                </p>
+                <Label className="text-foreground mb-3 block text-sm font-medium">
+                  {t('embedCodeLabel')}
+                </Label>
+                <p className="text-muted-foreground mb-6 text-xs">{t('embedCodeDescription')}</p>
                 <div className="bg-card border-border shadow-soft-xs rounded-xl border p-6">
                   <pre className="text-foreground overflow-x-auto font-mono text-xs">
                     <code>{embedCode}</code>
@@ -139,7 +139,7 @@ export default function DeployPage({ params }: { params: Promise<{ id: string }>
                 </div>
                 <div className="mt-8">
                   <Button onClick={copyEmbedCode} size="lg" className="px-8">
-                    {embedCopied ? 'Copied' : 'Copy Code'}
+                    {embedCopied ? t('copied') : t('copyCode')}
                   </Button>
                 </div>
               </div>
@@ -149,19 +149,19 @@ export default function DeployPage({ params }: { params: Promise<{ id: string }>
             <TabsContent value="whatsapp" className="space-y-12">
               <div>
                 <Label className="text-foreground mb-3 block text-sm font-medium">
-                  WhatsApp Business Number
+                  {t('whatsappNumberLabel')}
                 </Label>
                 <p className="text-muted-foreground mb-6 text-xs">
-                  Enter your WhatsApp Business phone number with country code
+                  {t('whatsappNumberDescription')}
                 </p>
                 <Input
-                  placeholder="+54 9 11 1234-5678"
+                  placeholder={t('whatsappNumberPlaceholder')}
                   value={whatsappNumber}
                   onChange={(e) => setWhatsappNumber(e.target.value)}
                   className="mb-8"
                 />
                 <Button onClick={connectWhatsApp} size="lg" className="px-8">
-                  Connect WhatsApp
+                  {t('connectWhatsapp')}
                 </Button>
               </div>
             </TabsContent>
@@ -170,20 +170,18 @@ export default function DeployPage({ params }: { params: Promise<{ id: string }>
             <TabsContent value="email" className="space-y-12">
               <div>
                 <Label className="text-foreground mb-3 block text-sm font-medium">
-                  Support Email Address
+                  {t('emailLabel')}
                 </Label>
-                <p className="text-muted-foreground mb-6 text-xs">
-                  Emails sent to this address will be handled by your agent
-                </p>
+                <p className="text-muted-foreground mb-6 text-xs">{t('emailDescription')}</p>
                 <Input
                   type="email"
-                  placeholder="support@yourcompany.com"
+                  placeholder={t('emailPlaceholder')}
                   value={emailAddress}
                   onChange={(e) => setEmailAddress(e.target.value)}
                   className="mb-8"
                 />
                 <Button onClick={connectEmail} size="lg" className="px-8">
-                  Connect Email
+                  {t('connectEmail')}
                 </Button>
               </div>
             </TabsContent>
@@ -200,7 +198,7 @@ export default function DeployPage({ params }: { params: Promise<{ id: string }>
               <span>←</span>
             </Link>
             <Button onClick={activateAgent} size="lg" className="px-8">
-              Launch Agent
+              {t('launchAgent')}
             </Button>
           </div>
         )}

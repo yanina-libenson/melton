@@ -2,6 +2,7 @@
 
 import { useState, use } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,6 +14,8 @@ import Link from 'next/link'
 import Image from 'next/image'
 
 export default function AgentPage({ params }: { params: Promise<{ id: string }> }) {
+  const t = useTranslations('agentDetail')
+  const tCommon = useTranslations('common')
   const resolvedParams = use(params)
   const router = useRouter()
   const isNewAgent = resolvedParams.id === 'new'
@@ -48,16 +51,16 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
 
   function handleSaveAgent() {
     if (!agent.name.trim()) {
-      toast.error('Agent name is required')
+      toast.error(t('errorNameRequired'))
       return
     }
 
     if (agent.instructions.length < 20) {
-      toast.error('Instructions must be at least 20 characters')
+      toast.error(t('errorInstructionsTooShort'))
       return
     }
 
-    toast.success(isNewAgent ? 'Agent created' : 'Agent saved')
+    toast.success(isNewAgent ? t('successCreated') : t('successSaved'))
 
     if (isNewAgent) {
       router.push('/agents')
@@ -78,18 +81,20 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
         {/* Header */}
         <div className="mb-12">
           <h1 className="text-foreground mb-2 text-4xl font-semibold tracking-tight">
-            {isNewAgent ? 'New Agent' : agent.name}
+            {isNewAgent ? t('newAgent') : agent.name}
           </h1>
           <p className="text-muted-foreground text-sm">
-            {isNewAgent ? 'Create your AI agent' : 'Configure your agent'}
+            {isNewAgent ? t('createSubtitle') : t('configureSubtitle')}
           </p>
         </div>
 
         {/* Agent Name */}
         <div className="mb-12">
-          <Label className="text-foreground mb-3 block text-sm font-medium">Agent Name</Label>
+          <Label className="text-foreground mb-3 block text-sm font-medium">
+            {t('agentNameLabel')}
+          </Label>
           <Input
-            placeholder="Customer Support"
+            placeholder={t('agentNamePlaceholder')}
             value={agent.name}
             onChange={(e) => setAgent({ ...agent, name: e.target.value })}
           />
@@ -97,9 +102,11 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
 
         {/* Instructions */}
         <div className="mb-12">
-          <Label className="text-foreground mb-3 block text-sm font-medium">Instructions</Label>
+          <Label className="text-foreground mb-3 block text-sm font-medium">
+            {t('instructionsLabel')}
+          </Label>
           <Textarea
-            placeholder="You are a helpful assistant..."
+            placeholder={t('instructionsPlaceholder')}
             value={agent.instructions}
             onChange={(e) => setAgent({ ...agent, instructions: e.target.value })}
             rows={12}
@@ -108,13 +115,15 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
 
         {/* Tools */}
         <div className="mb-12">
-          <Label className="text-foreground mb-4 block text-sm font-medium">Tools</Label>
+          <Label className="text-foreground mb-4 block text-sm font-medium">
+            {t('toolsLabel')}
+          </Label>
 
           {agent.integrations.length === 0 ? (
             <Link href={`/agents/${resolvedParams.id}/tools/add`} className="group block">
               <div className="border-border hover:border-primary/50 hover:bg-accent/30 cursor-pointer rounded-xl border-2 border-dashed py-16 text-center transition-all">
                 <p className="text-muted-foreground group-hover:text-foreground text-sm transition-colors">
-                  Add tools
+                  {t('addTools')}
                 </p>
               </div>
             </Link>
@@ -148,8 +157,7 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
                             {integration.name}
                           </h3>
                           <p className="text-muted-foreground mt-0.5 text-xs">
-                            {integration.enabledToolIds.length}{' '}
-                            {integration.enabledToolIds.length === 1 ? 'tool' : 'tools'}
+                            {t('toolCount', { count: integration.enabledToolIds.length })}
                           </p>
                         </div>
                       </div>
@@ -163,7 +171,7 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
               <Link href={`/agents/${resolvedParams.id}/tools/add`} className="group block">
                 <div className="border-border hover:border-primary/50 hover:bg-accent/30 cursor-pointer rounded-xl border-2 border-dashed px-5 py-4 text-center transition-all duration-200 ease-out">
                   <p className="text-muted-foreground group-hover:text-foreground text-sm transition-colors">
-                    Add another tool
+                    {t('addAnotherTool')}
                   </p>
                 </div>
               </Link>
@@ -173,12 +181,14 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
 
         {/* Connect */}
         <div className="mb-12">
-          <Label className="text-foreground mb-4 block text-sm font-medium">Connect</Label>
+          <Label className="text-foreground mb-4 block text-sm font-medium">
+            {t('connectLabel')}
+          </Label>
 
           <Link href={`/agents/${resolvedParams.id}/deploy`} className="group block">
             <div className="border-border hover:border-primary/50 hover:bg-accent/30 cursor-pointer rounded-xl border-2 border-dashed py-16 text-center transition-all">
               <p className="text-muted-foreground group-hover:text-foreground text-sm transition-colors">
-                Connect to channels
+                {t('connectToChannels')}
               </p>
             </div>
           </Link>
@@ -193,7 +203,7 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
             <span>←</span>
           </Link>
           <Button onClick={handleSaveAgent} size="lg">
-            Save
+            {tCommon('save')}
           </Button>
         </div>
       </div>

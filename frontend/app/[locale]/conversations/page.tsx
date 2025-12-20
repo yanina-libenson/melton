@@ -1,29 +1,32 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { mockConversations, mockAgents } from '@/lib/mock-data'
 import { Conversation } from '@/lib/types'
 
-function formatDate(dateString: string): string {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
-
-  if (diffInHours < 1) return 'Just now'
-  if (diffInHours < 24) return `${diffInHours} hours ago`
-  if (diffInHours < 48) return 'Yesterday'
-
-  const diffInDays = Math.floor(diffInHours / 24)
-  if (diffInDays < 7) return `${diffInDays} days ago`
-
-  return date.toLocaleDateString()
-}
-
 export default function ConversationsPage() {
+  const t = useTranslations('conversations')
+  const tDates = useTranslations('dates')
   const [conversations] = useState<Conversation[]>(mockConversations)
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(
     conversations[0] || null
   )
+
+  function formatDate(dateString: string): string {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
+
+    if (diffInHours < 1) return tDates('justNow')
+    if (diffInHours < 24) return tDates('hoursAgo', { hours: diffInHours })
+    if (diffInHours < 48) return tDates('yesterday')
+
+    const diffInDays = Math.floor(diffInHours / 24)
+    if (diffInDays < 7) return tDates('daysAgo', { days: diffInDays })
+
+    return date.toLocaleDateString()
+  }
 
   function getAgentName(agentId: string): string {
     const agent = mockAgents.find((a) => a.id === agentId)
@@ -35,8 +38,8 @@ export default function ConversationsPage() {
       {/* Header */}
       <div className="border-border border-b px-8 py-6">
         <div className="mx-auto max-w-7xl">
-          <h1 className="text-foreground text-3xl font-semibold tracking-tight">Conversations</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Customer interactions</p>
+          <h1 className="text-foreground text-3xl font-semibold tracking-tight">{t('title')}</h1>
+          <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
         </div>
       </div>
 
@@ -69,7 +72,7 @@ export default function ConversationsPage() {
                       </p>
                     </div>
                     <p className="text-muted-foreground truncate text-xs">
-                      {lastMessage?.content || 'No messages'}
+                      {lastMessage?.content || t('noMessages')}
                     </p>
                   </div>
                 )
@@ -121,7 +124,7 @@ export default function ConversationsPage() {
                                         className="bg-background text-foreground border-border mb-2 rounded border p-3 text-xs"
                                       >
                                         <p className="text-muted-foreground">
-                                          Used {toolCall.toolName}
+                                          {t('usedTool', { toolName: toolCall.toolName })}
                                         </p>
                                       </div>
                                     ))}
@@ -138,7 +141,7 @@ export default function ConversationsPage() {
               </>
             ) : (
               <div className="flex flex-1 items-center justify-center">
-                <p className="text-muted-foreground font-light">Select a conversation</p>
+                <p className="text-muted-foreground font-light">{t('selectConversation')}</p>
               </div>
             )}
           </div>

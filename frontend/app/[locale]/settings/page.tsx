@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -10,36 +11,39 @@ import Image from 'next/image'
 
 interface ProviderToken {
   id: string
-  name: string
+  nameKey: string
   logo: string
-  description: string
+  descriptionKey: string
   placeholder: string
   token: string
 }
 
 export default function SettingsPage() {
+  const t = useTranslations('settings')
+  const tCommon = useTranslations('common')
+
   const [providers, setProviders] = useState<ProviderToken[]>([
     {
       id: 'openai',
-      name: 'OpenAI',
+      nameKey: 'openaiName',
       logo: 'https://cdn.worldvectorlogo.com/logos/openai-2.svg',
-      description: 'GPT-4, GPT-3.5, and other OpenAI models',
+      descriptionKey: 'openaiDescription',
       placeholder: 'sk-...',
       token: '',
     },
     {
       id: 'anthropic',
-      name: 'Anthropic',
+      nameKey: 'anthropicName',
       logo: 'https://cdn.simpleicons.org/anthropic',
-      description: 'Claude Opus, Claude Sonnet models',
+      descriptionKey: 'anthropicDescription',
       placeholder: 'sk-ant-...',
       token: '',
     },
     {
       id: 'google',
-      name: 'Google AI',
+      nameKey: 'googleName',
       logo: 'https://www.gstatic.com/lamda/images/gemini_sparkle_v002_d4735304ff6292a690345.svg',
-      description: 'Gemini and other Google models',
+      descriptionKey: 'googleDescription',
       placeholder: 'AIza...',
       token: '',
     },
@@ -51,7 +55,7 @@ export default function SettingsPage() {
 
   function handleSave() {
     // Mock save - in production this would save to backend
-    toast.success('Settings saved')
+    toast.success(t('successSaved'))
   }
 
   return (
@@ -67,18 +71,18 @@ export default function SettingsPage() {
 
         {/* Header */}
         <div className="mb-12">
-          <h1 className="text-foreground mb-2 text-4xl font-semibold tracking-tight">Settings</h1>
-          <p className="text-muted-foreground text-sm">Configure your AI provider tokens</p>
+          <h1 className="text-foreground mb-2 text-4xl font-semibold tracking-tight">
+            {t('title')}
+          </h1>
+          <p className="text-muted-foreground text-sm">{t('subtitle')}</p>
         </div>
 
         {/* Provider Tokens */}
         <div className="mb-12">
           <Label className="text-foreground mb-4 block text-sm font-medium">
-            AI Provider API Keys
+            {t('apiKeysLabel')}
           </Label>
-          <p className="text-muted-foreground mb-6 text-sm">
-            Add your API keys to enable AI models in your agents
-          </p>
+          <p className="text-muted-foreground mb-6 text-sm">{t('apiKeysDescription')}</p>
 
           <div className="space-y-4">
             {providers.map((provider) => (
@@ -89,14 +93,18 @@ export default function SettingsPage() {
                 <div className="flex items-start gap-4">
                   <Image
                     src={provider.logo}
-                    alt={provider.name}
+                    alt={t(provider.nameKey)}
                     width={40}
                     height={40}
                     className="h-10 w-10 rounded-lg object-contain"
                   />
                   <div className="flex-1">
-                    <h3 className="text-foreground mb-1 text-sm font-medium">{provider.name}</h3>
-                    <p className="text-muted-foreground mb-4 text-xs">{provider.description}</p>
+                    <h3 className="text-foreground mb-1 text-sm font-medium">
+                      {t(provider.nameKey)}
+                    </h3>
+                    <p className="text-muted-foreground mb-4 text-xs">
+                      {t(provider.descriptionKey)}
+                    </p>
 
                     <div>
                       <Input
@@ -122,7 +130,7 @@ export default function SettingsPage() {
             <span>←</span>
           </Link>
           <Button onClick={handleSave} size="lg">
-            Save
+            {tCommon('save')}
           </Button>
         </div>
       </div>
