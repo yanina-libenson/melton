@@ -1,0 +1,15 @@
+{
+  "name": "melton-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "start": "cd frontend && npm start",
+    "lint": "cd frontend && npm run lint",
+    "lint:fix": "cd frontend && npm run lint:fix",
+    "format": "cd frontend && npm run format",
+    "format:check": "cd frontend && npm run format:check",
+    "type-check": "cd frontend && npm run type-check"
+  }
+}

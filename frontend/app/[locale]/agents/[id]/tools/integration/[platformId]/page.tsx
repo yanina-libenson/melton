@@ -18,14 +18,17 @@ import { Tool, AuthenticationType, HttpMethod, CustomToolType } from '@/lib/type
 import { toast } from 'sonner'
 import { mockAgents } from '@/lib/mock-data'
 import Image from 'next/image'
+import { useTranslations } from 'next-intl'
 
 export default function IntegrationConfigPage({
   params,
 }: {
-  params: Promise<{ id: string; platformId: string }>
+  params: Promise<{ id: string; platformId: string; locale: string }>
 }) {
   const resolvedParams = use(params)
   const router = useRouter()
+  const t = useTranslations('toolsIntegration')
+  const tCommon = useTranslations('common')
 
   const platform = PLATFORM_INTEGRATIONS.find((p) => p.id === resolvedParams.platformId)
   const isCustomTool = resolvedParams.platformId === 'custom-tool'
@@ -118,7 +121,7 @@ export default function IntegrationConfigPage({
 
   async function handleDiscoverEndpoints() {
     if (!openApiUrl.trim()) {
-      toast.error('Please enter an OpenAPI spec URL')
+      toast.error(t('errorOpenApiUrlRequired'))
       return
     }
 
@@ -150,17 +153,17 @@ export default function IntegrationConfigPage({
       setTools(mockDiscoveredTools)
       setEnabledToolIds([]) // Start with all unselected
       setIsDiscovering(false)
-      toast.success(`Discovered ${mockDiscoveredTools.length} endpoints`)
+      toast.success(t('successEndpointsDiscovered', { count: mockDiscoveredTools.length }))
     }, 1500)
   }
 
   function handleAddEndpoint() {
     if (!newEndpoint.name.trim()) {
-      toast.error('Endpoint name is required')
+      toast.error(t('errorEndpointNameRequired'))
       return
     }
     if (!newEndpoint.path.trim()) {
-      toast.error('Endpoint path is required')
+      toast.error(t('errorEndpointPathRequired'))
       return
     }
 
@@ -175,7 +178,7 @@ export default function IntegrationConfigPage({
     // Don't auto-enable - let user select it
     setNewEndpoint({ name: '', description: '', method: 'GET', path: '' })
     setShowEndpointForm(false)
-    toast.success('Endpoint added')
+    toast.success(t('successEndpointAdded'))
   }
 
   function handleToggleTool(toolId: string) {
@@ -305,11 +308,11 @@ export default function IntegrationConfigPage({
     // Validate custom tool fields that need API
     if (isCustomTool && customToolType === 'api') {
       if (!toolName.trim()) {
-        toast.error('Tool name is required')
+        toast.error(t('errorToolNameRequired'))
         return
       }
       if (!baseUrl.trim()) {
-        toast.error('Base URL is required')
+        toast.error(t('errorBaseUrlRequired'))
         return
       }
     }
@@ -321,7 +324,7 @@ export default function IntegrationConfigPage({
       )
 
       if (missingFields.length > 0) {
-        toast.error(`Please fill in all required fields`)
+        toast.error(t('errorFillRequiredFields'))
         return
       }
     }
@@ -332,7 +335,7 @@ export default function IntegrationConfigPage({
   function handleNextFromConfig() {
     if (isSubAgent) {
       if (!selectedSubAgentId) {
-        toast.error('Please select a sub-agent')
+        toast.error(t('errorSelectSubAgent'))
         return
       }
       // Create a tool from the selected agent
@@ -341,7 +344,7 @@ export default function IntegrationConfigPage({
         const tool: Tool = {
           id: `sub-agent-${selectedSubAgentId}`,
           name: subAgent.name,
-          description: `Use ${subAgent.name} as a tool`,
+          description: t('useAsToolDescription', { name: subAgent.name }),
           sourceId: 'sub-agent',
           toolType: 'sub-agent',
           subAgentId: selectedSubAgentId,
@@ -352,7 +355,7 @@ export default function IntegrationConfigPage({
       }
     } else if (isCustomTool && customToolType === 'llm') {
       if (!toolName.trim()) {
-        toast.error('Tool name is required')
+        toast.error(t('errorToolNameRequired'))
         return
       }
       const config = toolConfigs['llm-default'] || {
@@ -378,11 +381,11 @@ export default function IntegrationConfigPage({
 
   function handleSave() {
     if (enabledToolIds.length === 0) {
-      toast.error('Please enable at least one tool')
+      toast.error(t('errorAtLeastOneTool'))
       return
     }
 
-    toast.success(`${toolName || platform?.name || 'Tool'} added`)
+    toast.success(t('successToolAdded', { name: toolName || platform?.name || 'Tool' }))
     router.push(`/agents/${resolvedParams.id}`)
   }
 
@@ -444,27 +447,23 @@ export default function IntegrationConfigPage({
         {step === 'type-selection' && isCustomTool && (
           <div className="mb-12">
             <Label className="text-foreground mb-4 block text-sm font-medium">
-              Choose tool type
+              {t('chooseToolType')}
             </Label>
             <div className="grid grid-cols-1 gap-3">
               <button
                 onClick={() => handleSelectToolType('llm')}
                 className="border-border bg-card shadow-soft-xs hover:shadow-soft-sm hover:border-border cursor-pointer rounded-xl border px-6 py-5 text-left transition-all duration-200 ease-out hover:-translate-y-0.5"
               >
-                <p className="text-foreground mb-1 text-sm font-medium">LLM</p>
-                <p className="text-muted-foreground text-xs">
-                  Pure LLM tool for processing and transformations
-                </p>
+                <p className="text-foreground mb-1 text-sm font-medium">{t('llmType')}</p>
+                <p className="text-muted-foreground text-xs">{t('llmTypeDescription')}</p>
               </button>
 
               <button
                 onClick={() => handleSelectToolType('api')}
                 className="border-border bg-card shadow-soft-xs hover:shadow-soft-sm hover:border-border cursor-pointer rounded-xl border px-6 py-5 text-left transition-all duration-200 ease-out hover:-translate-y-0.5"
               >
-                <p className="text-foreground mb-1 text-sm font-medium">API</p>
-                <p className="text-muted-foreground text-xs">
-                  Connect to an API, optionally enhance with LLM
-                </p>
+                <p className="text-foreground mb-1 text-sm font-medium">{t('apiType')}</p>
+                <p className="text-muted-foreground text-xs">{t('apiTypeDescription')}</p>
               </button>
             </div>
           </div>
@@ -474,10 +473,12 @@ export default function IntegrationConfigPage({
         {step === 'config' && isSubAgent && (
           <div className="mb-12 space-y-8">
             <div>
-              <Label className="text-foreground mb-3 block text-sm font-medium">Select Agent</Label>
+              <Label className="text-foreground mb-3 block text-sm font-medium">
+                {t('selectAgentLabel')}
+              </Label>
               <Select value={selectedSubAgentId} onValueChange={setSelectedSubAgentId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Choose an agent to use as a tool" />
+                  <SelectValue placeholder={t('selectAgentPlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
                   {mockAgents
@@ -489,9 +490,7 @@ export default function IntegrationConfigPage({
                     ))}
                 </SelectContent>
               </Select>
-              <p className="text-muted-foreground mt-2 text-xs">
-                This agent will be available as a tool within the current agent
-              </p>
+              <p className="text-muted-foreground mt-2 text-xs">{t('selectAgentHelp')}</p>
             </div>
           </div>
         )}
@@ -500,18 +499,22 @@ export default function IntegrationConfigPage({
         {step === 'config' && isCustomTool && customToolType === 'llm' && (
           <div className="mb-12 space-y-8">
             <div>
-              <Label className="text-foreground mb-3 block text-sm font-medium">Tool Name</Label>
+              <Label className="text-foreground mb-3 block text-sm font-medium">
+                {t('toolNameLabel')}
+              </Label>
               <Input
-                placeholder="Sentiment Analyzer"
+                placeholder={t('toolNamePlaceholder')}
                 value={toolName}
                 onChange={(e) => setToolName(e.target.value)}
               />
             </div>
 
             <div>
-              <Label className="text-foreground mb-3 block text-sm font-medium">Description</Label>
+              <Label className="text-foreground mb-3 block text-sm font-medium">
+                {t('descriptionLabel')}
+              </Label>
               <Textarea
-                placeholder="What does this LLM tool do?"
+                placeholder={t('descriptionPlaceholder')}
                 value={toolDescription}
                 onChange={(e) => setToolDescription(e.target.value)}
                 rows={3}
@@ -519,7 +522,9 @@ export default function IntegrationConfigPage({
             </div>
 
             <div>
-              <Label className="text-foreground mb-3 block text-sm font-medium">Model</Label>
+              <Label className="text-foreground mb-3 block text-sm font-medium">
+                {t('modelLabel')}
+              </Label>
               <Select
                 value={toolConfigs['llm-default']?.llmModel || 'claude-sonnet-4'}
                 onValueChange={(value) =>
@@ -538,17 +543,19 @@ export default function IntegrationConfigPage({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="claude-sonnet-4">Claude Sonnet 4</SelectItem>
-                  <SelectItem value="claude-opus-4">Claude Opus 4</SelectItem>
-                  <SelectItem value="gpt-4">GPT-4</SelectItem>
+                  <SelectItem value="claude-sonnet-4">{t('modelClaudeSonnet4')}</SelectItem>
+                  <SelectItem value="claude-opus-4">{t('modelClaudeOpus4')}</SelectItem>
+                  <SelectItem value="gpt-4">{t('modelGpt4')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div>
-              <Label className="text-foreground mb-3 block text-sm font-medium">Instructions</Label>
+              <Label className="text-foreground mb-3 block text-sm font-medium">
+                {t('instructionsLabel')}
+              </Label>
               <Textarea
-                placeholder="System prompt for this LLM tool. For example: 'You are a sentiment analyzer. Analyze the input text and return only: positive, negative, or neutral.'"
+                placeholder={t('instructionsPlaceholder')}
                 value={toolConfigs['llm-default']?.llmInstructions || ''}
                 onChange={(e) =>
                   setToolConfigs({
@@ -575,10 +582,10 @@ export default function IntegrationConfigPage({
                 {/* Custom Tool Configuration */}
                 <div>
                   <Label className="text-foreground mb-3 block text-sm font-medium">
-                    Tool Name
+                    {t('toolNameLabel')}
                   </Label>
                   <Input
-                    placeholder="My API"
+                    placeholder={t('toolNamePlaceholderApi')}
                     value={toolName}
                     onChange={(e) => setToolName(e.target.value)}
                   />
@@ -586,10 +593,10 @@ export default function IntegrationConfigPage({
 
                 <div>
                   <Label className="text-foreground mb-3 block text-sm font-medium">
-                    Description
+                    {t('descriptionLabel')}
                   </Label>
                   <Textarea
-                    placeholder="What does this API do?"
+                    placeholder={t('descriptionPlaceholderApi')}
                     value={toolDescription}
                     onChange={(e) => setToolDescription(e.target.value)}
                     rows={3}
@@ -597,10 +604,12 @@ export default function IntegrationConfigPage({
                 </div>
 
                 <div>
-                  <Label className="text-foreground mb-3 block text-sm font-medium">Base URL</Label>
+                  <Label className="text-foreground mb-3 block text-sm font-medium">
+                    {t('baseUrlLabel')}
+                  </Label>
                   <Input
                     type="url"
-                    placeholder="https://api.example.com"
+                    placeholder={t('baseUrlPlaceholder')}
                     value={baseUrl}
                     onChange={(e) => setBaseUrl(e.target.value)}
                   />
@@ -608,7 +617,7 @@ export default function IntegrationConfigPage({
 
                 <div>
                   <Label className="text-foreground mb-3 block text-sm font-medium">
-                    Authentication
+                    {t('authenticationLabel')}
                   </Label>
                   <Select
                     value={authType}
@@ -621,23 +630,23 @@ export default function IntegrationConfigPage({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      <SelectItem value="api-key">API Key</SelectItem>
-                      <SelectItem value="bearer">Bearer Token</SelectItem>
-                      <SelectItem value="basic">Basic Auth</SelectItem>
+                      <SelectItem value="none">{t('authTypeNone')}</SelectItem>
+                      <SelectItem value="api-key">{t('authTypeApiKey')}</SelectItem>
+                      <SelectItem value="bearer">{t('authTypeBearer')}</SelectItem>
+                      <SelectItem value="basic">{t('authTypeBasic')}</SelectItem>
                     </SelectContent>
                   </Select>
 
                   {authType === 'api-key' && (
                     <div className="space-y-4">
                       <Input
-                        placeholder="Header name (e.g., X-API-Key)"
+                        placeholder={t('apiKeyHeaderPlaceholder')}
                         value={authData.apiKeyHeader || ''}
                         onChange={(e) => setAuthData({ ...authData, apiKeyHeader: e.target.value })}
                       />
                       <Input
                         type="password"
-                        placeholder="API Key"
+                        placeholder={t('apiKeyValuePlaceholder')}
                         value={authData.apiKeyValue || ''}
                         onChange={(e) => setAuthData({ ...authData, apiKeyValue: e.target.value })}
                       />
@@ -647,7 +656,7 @@ export default function IntegrationConfigPage({
                   {authType === 'bearer' && (
                     <Input
                       type="password"
-                      placeholder="Bearer Token"
+                      placeholder={t('bearerTokenPlaceholder')}
                       value={authData.bearerToken || ''}
                       onChange={(e) => setAuthData({ ...authData, bearerToken: e.target.value })}
                     />
@@ -656,13 +665,13 @@ export default function IntegrationConfigPage({
                   {authType === 'basic' && (
                     <div className="space-y-4">
                       <Input
-                        placeholder="Username"
+                        placeholder={t('usernamePlaceholder')}
                         value={authData.username || ''}
                         onChange={(e) => setAuthData({ ...authData, username: e.target.value })}
                       />
                       <Input
                         type="password"
-                        placeholder="Password"
+                        placeholder={t('passwordPlaceholder')}
                         value={authData.password || ''}
                         onChange={(e) => setAuthData({ ...authData, password: e.target.value })}
                       />
@@ -677,7 +686,9 @@ export default function IntegrationConfigPage({
                   <div key={field.name}>
                     <Label className="text-foreground mb-3 block text-sm font-medium">
                       {field.label}
-                      {field.required && <span className="text-destructive ml-1">*</span>}
+                      {field.required && (
+                        <span className="text-destructive ml-1">{t('requiredField')}</span>
+                      )}
                     </Label>
                     <Input
                       type={field.type}
@@ -709,7 +720,7 @@ export default function IntegrationConfigPage({
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      Auto-discover
+                      {t('autoDiscover')}
                     </button>
                     <button
                       onClick={() => setDiscoveryMethod('manual')}
@@ -719,7 +730,7 @@ export default function IntegrationConfigPage({
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
-                      Add manually
+                      {t('addManually')}
                     </button>
                   </div>
                 </div>
@@ -727,19 +738,17 @@ export default function IntegrationConfigPage({
                 {/* OpenAPI Discovery */}
                 {discoveryMethod === 'openapi' && (
                   <div className="mb-8">
-                    <p className="text-muted-foreground mb-4 text-sm">
-                      Automatically import endpoints from an OpenAPI/Swagger specification
-                    </p>
+                    <p className="text-muted-foreground mb-4 text-sm">{t('openApiDescription')}</p>
                     <div className="flex gap-2">
                       <Input
-                        placeholder="https://api.example.com/openapi.json"
+                        placeholder={t('openApiUrlPlaceholder')}
                         value={openApiUrl}
                         onChange={(e) => setOpenApiUrl(e.target.value)}
                         disabled={isDiscovering}
                         className="flex-1"
                       />
                       <Button onClick={handleDiscoverEndpoints} disabled={isDiscovering}>
-                        {isDiscovering ? 'Discovering...' : 'Discover'}
+                        {isDiscovering ? t('discovering') : t('discover')}
                       </Button>
                     </div>
                   </div>
@@ -750,11 +759,11 @@ export default function IntegrationConfigPage({
                   <div className="mb-8">
                     <div className="mb-4 flex items-center justify-between">
                       <p className="text-muted-foreground text-sm">
-                        Configure individual API endpoints
+                        {t('manualEndpointsDescription')}
                       </p>
                       {!showEndpointForm && (
                         <Button onClick={() => setShowEndpointForm(true)} size="sm">
-                          Add Endpoint
+                          {t('addEndpoint')}
                         </Button>
                       )}
                     </div>
@@ -764,10 +773,10 @@ export default function IntegrationConfigPage({
                         <div className="grid grid-cols-2 gap-4">
                           <div>
                             <Label className="text-foreground mb-2 block text-xs font-medium">
-                              Endpoint Name *
+                              {t('endpointNameLabel')}
                             </Label>
                             <Input
-                              placeholder="Get User"
+                              placeholder={t('endpointNamePlaceholder')}
                               value={newEndpoint.name}
                               onChange={(e) =>
                                 setNewEndpoint({ ...newEndpoint, name: e.target.value })
@@ -776,7 +785,7 @@ export default function IntegrationConfigPage({
                           </div>
                           <div>
                             <Label className="text-foreground mb-2 block text-xs font-medium">
-                              HTTP Method
+                              {t('httpMethodLabel')}
                             </Label>
                             <Select
                               value={newEndpoint.method}
@@ -800,10 +809,10 @@ export default function IntegrationConfigPage({
 
                         <div>
                           <Label className="text-foreground mb-2 block text-xs font-medium">
-                            Path *
+                            {t('pathLabel')}
                           </Label>
                           <Input
-                            placeholder="/users/:id"
+                            placeholder={t('pathPlaceholder')}
                             value={newEndpoint.path}
                             onChange={(e) =>
                               setNewEndpoint({ ...newEndpoint, path: e.target.value })
@@ -813,10 +822,10 @@ export default function IntegrationConfigPage({
 
                         <div>
                           <Label className="text-foreground mb-2 block text-xs font-medium">
-                            Description
+                            {t('descriptionLabel')}
                           </Label>
                           <Textarea
-                            placeholder="What does this endpoint do?"
+                            placeholder={t('endpointDescriptionPlaceholder')}
                             value={newEndpoint.description}
                             onChange={(e) =>
                               setNewEndpoint({ ...newEndpoint, description: e.target.value })
@@ -828,7 +837,7 @@ export default function IntegrationConfigPage({
 
                         <div className="flex gap-2 pt-2">
                           <Button onClick={handleAddEndpoint} size="sm">
-                            Add
+                            {tCommon('add')}
                           </Button>
                           <Button
                             onClick={() => {
@@ -838,7 +847,7 @@ export default function IntegrationConfigPage({
                             variant="ghost"
                             size="sm"
                           >
-                            Cancel
+                            {tCommon('cancel')}
                           </Button>
                         </div>
                       </div>
@@ -852,23 +861,21 @@ export default function IntegrationConfigPage({
               <Label className="text-foreground mb-2 block text-sm font-medium">
                 {isCustomTool || isSubAgent
                   ? isSubAgent
-                    ? 'Sub-Agent'
+                    ? t('subAgent')
                     : customToolType === 'llm'
-                      ? 'LLM Tool'
-                      : 'API Endpoints'
-                  : 'Select Tools'}
+                      ? t('llmTool')
+                      : t('apiEndpoints')
+                  : t('selectTools')}
               </Label>
               <p className="text-muted-foreground text-xs">
-                {enabledToolIds.length} of {tools.length} selected
+                {t('toolsSelectedCount', { count: enabledToolIds.length, total: tools.length })}
               </p>
             </div>
 
             {tools.length === 0 && isCustomTool && customToolType === 'api' ? (
               <div className="border-border bg-card shadow-soft-xs rounded-xl border py-12 text-center">
-                <p className="text-muted-foreground mb-2 text-sm">No endpoints configured yet</p>
-                <p className="text-muted-foreground text-xs">
-                  Use OpenAPI discovery above or add endpoints manually
-                </p>
+                <p className="text-muted-foreground mb-2 text-sm">{t('noEndpointsYet')}</p>
+                <p className="text-muted-foreground text-xs">{t('noEndpointsHelp')}</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -913,10 +920,10 @@ export default function IntegrationConfigPage({
                             <div className="flex items-center justify-between">
                               <div>
                                 <div className="text-foreground text-sm font-medium">
-                                  Enhance with LLM
+                                  {t('enhanceWithLlm')}
                                 </div>
                                 <p className="text-muted-foreground mt-0.5 text-xs">
-                                  Process inputs and outputs with AI
+                                  {t('enhanceWithLlmDescription')}
                                 </p>
                               </div>
                               <button
@@ -943,7 +950,7 @@ export default function IntegrationConfigPage({
                               <div className="space-y-3 pt-2">
                                 <div>
                                   <Label className="text-muted-foreground mb-2 block text-xs">
-                                    Model
+                                    {t('modelLabel')}
                                   </Label>
                                   <Select
                                     value={config.llmModel}
@@ -959,20 +966,22 @@ export default function IntegrationConfigPage({
                                     </SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="claude-sonnet-4">
-                                        Claude Sonnet 4
+                                        {t('modelClaudeSonnet4')}
                                       </SelectItem>
-                                      <SelectItem value="claude-opus-4">Claude Opus 4</SelectItem>
-                                      <SelectItem value="gpt-4">GPT-4</SelectItem>
+                                      <SelectItem value="claude-opus-4">
+                                        {t('modelClaudeOpus4')}
+                                      </SelectItem>
+                                      <SelectItem value="gpt-4">{t('modelGpt4')}</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
 
                                 <div>
                                   <Label className="text-muted-foreground mb-2 block text-xs">
-                                    Instructions
+                                    {t('instructionsLabel')}
                                   </Label>
                                   <Textarea
-                                    placeholder="How should the LLM process this tool's input/output?"
+                                    placeholder={t('llmInstructionsPlaceholder')}
                                     value={config.llmInstructions}
                                     onChange={(e) =>
                                       setToolConfigs({
@@ -998,10 +1007,10 @@ export default function IntegrationConfigPage({
                             <div className="mb-6 flex items-center justify-between">
                               <div>
                                 <h3 className="text-foreground mb-1 text-sm font-medium">
-                                  What information does this tool need?
+                                  {t('inputFieldsTitle')}
                                 </h3>
                                 <p className="text-muted-foreground text-sm">
-                                  Define what the agent should send to this tool
+                                  {t('inputFieldsDescription')}
                                 </p>
                               </div>
                               <Button
@@ -1009,7 +1018,7 @@ export default function IntegrationConfigPage({
                                 variant="outline"
                                 size="default"
                               >
-                                Add field
+                                {t('addField')}
                               </Button>
                             </div>
 
@@ -1022,10 +1031,10 @@ export default function IntegrationConfigPage({
                                   <div className="grid grid-cols-2 gap-4">
                                     <div>
                                       <Label className="text-muted-foreground mb-2 block text-xs">
-                                        Field name
+                                        {t('fieldNameLabel')}
                                       </Label>
                                       <Input
-                                        placeholder="e.g., text"
+                                        placeholder={t('fieldNamePlaceholder')}
                                         value={field.name}
                                         onChange={(e) =>
                                           updateInputField(tool.id, index, { name: e.target.value })
@@ -1034,7 +1043,7 @@ export default function IntegrationConfigPage({
                                     </div>
                                     <div>
                                       <Label className="text-muted-foreground mb-2 block text-xs">
-                                        Type
+                                        {t('fieldTypeLabel')}
                                       </Label>
                                       <Select
                                         value={field.type}
@@ -1046,10 +1055,16 @@ export default function IntegrationConfigPage({
                                           <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                          <SelectItem value="text">Text</SelectItem>
-                                          <SelectItem value="number">Number</SelectItem>
-                                          <SelectItem value="boolean">Yes or No</SelectItem>
-                                          <SelectItem value="select">Choose from list</SelectItem>
+                                          <SelectItem value="text">{t('fieldTypeText')}</SelectItem>
+                                          <SelectItem value="number">
+                                            {t('fieldTypeNumber')}
+                                          </SelectItem>
+                                          <SelectItem value="boolean">
+                                            {t('fieldTypeBoolean')}
+                                          </SelectItem>
+                                          <SelectItem value="select">
+                                            {t('fieldTypeSelect')}
+                                          </SelectItem>
                                         </SelectContent>
                                       </Select>
                                     </div>
@@ -1057,10 +1072,10 @@ export default function IntegrationConfigPage({
 
                                   <div>
                                     <Label className="text-muted-foreground mb-2 block text-xs">
-                                      Description
+                                      {t('fieldDescriptionLabel')}
                                     </Label>
                                     <Input
-                                      placeholder="e.g., The text to analyze"
+                                      placeholder={t('fieldDescriptionPlaceholder')}
                                       value={field.description}
                                       onChange={(e) =>
                                         updateInputField(tool.id, index, {
@@ -1069,17 +1084,17 @@ export default function IntegrationConfigPage({
                                       }
                                     />
                                     <p className="text-muted-foreground mt-1.5 text-xs">
-                                      Helps the agent understand what to provide
+                                      {t('fieldDescriptionHelp')}
                                     </p>
                                   </div>
 
                                   {field.type === 'select' && (
                                     <div>
                                       <Label className="text-muted-foreground mb-2 block text-xs">
-                                        Options
+                                        {t('optionsLabel')}
                                       </Label>
                                       <Input
-                                        placeholder="e.g., positive, negative, neutral"
+                                        placeholder={t('optionsPlaceholder')}
                                         value={field.options?.join(', ') || ''}
                                         onChange={(e) =>
                                           updateInputField(tool.id, index, {
@@ -1088,7 +1103,7 @@ export default function IntegrationConfigPage({
                                         }
                                       />
                                       <p className="text-muted-foreground mt-1.5 text-xs">
-                                        Separate options with commas
+                                        {t('optionsHelp')}
                                       </p>
                                     </div>
                                   )}
@@ -1105,13 +1120,13 @@ export default function IntegrationConfigPage({
                                         }
                                         className="h-4 w-4"
                                       />
-                                      Required field
+                                      {t('requiredFieldLabel')}
                                     </label>
                                     <button
                                       onClick={() => removeInputField(tool.id, index)}
                                       className="text-muted-foreground hover:text-foreground text-xs transition-colors"
                                     >
-                                      Remove field
+                                      {t('removeField')}
                                     </button>
                                   </div>
                                 </div>
@@ -1120,7 +1135,7 @@ export default function IntegrationConfigPage({
                               {(toolSchemas[tool.id]?.inputFields || []).length === 0 && (
                                 <div className="border-border rounded-xl border-2 border-dashed py-12 text-center">
                                   <p className="text-muted-foreground text-sm">
-                                    No input fields defined yet
+                                    {t('noInputFieldsYet')}
                                   </p>
                                 </div>
                               )}
@@ -1132,10 +1147,10 @@ export default function IntegrationConfigPage({
                             <div className="mb-6 flex items-center justify-between">
                               <div>
                                 <h3 className="text-foreground mb-1 text-sm font-medium">
-                                  What does this tool return?
+                                  {t('outputFieldsTitle')}
                                 </h3>
                                 <p className="text-muted-foreground text-sm">
-                                  Define the fields this tool will send back
+                                  {t('outputFieldsDescription')}
                                 </p>
                               </div>
                               <Button
@@ -1143,7 +1158,7 @@ export default function IntegrationConfigPage({
                                 variant="outline"
                                 size="default"
                               >
-                                Add field
+                                {t('addField')}
                               </Button>
                             </div>
 
@@ -1155,10 +1170,10 @@ export default function IntegrationConfigPage({
                                 >
                                   <div>
                                     <Label className="text-muted-foreground mb-2 block text-xs">
-                                      Field name
+                                      {t('fieldNameLabel')}
                                     </Label>
                                     <Input
-                                      placeholder="e.g., message"
+                                      placeholder={t('outputFieldNamePlaceholder')}
                                       value={field.name}
                                       onChange={(e) =>
                                         updateOutputField(tool.id, index, { name: e.target.value })
@@ -1167,10 +1182,10 @@ export default function IntegrationConfigPage({
                                   </div>
                                   <div>
                                     <Label className="text-muted-foreground mb-2 block text-xs">
-                                      Description
+                                      {t('fieldDescriptionLabel')}
                                     </Label>
                                     <Input
-                                      placeholder="e.g., The response message"
+                                      placeholder={t('outputFieldDescriptionPlaceholder')}
                                       value={field.description}
                                       onChange={(e) =>
                                         updateOutputField(tool.id, index, {
@@ -1179,7 +1194,7 @@ export default function IntegrationConfigPage({
                                       }
                                     />
                                     <p className="text-muted-foreground mt-1.5 text-xs">
-                                      What this field contains
+                                      {t('outputFieldDescriptionHelp')}
                                     </p>
                                   </div>
                                   <div className="border-border flex justify-end border-t pt-4">
@@ -1187,7 +1202,7 @@ export default function IntegrationConfigPage({
                                       onClick={() => removeOutputField(tool.id, index)}
                                       className="text-muted-foreground hover:text-foreground text-xs transition-colors"
                                     >
-                                      Remove field
+                                      {t('removeField')}
                                     </button>
                                   </div>
                                 </div>
@@ -1196,7 +1211,7 @@ export default function IntegrationConfigPage({
                               {(toolSchemas[tool.id]?.outputFields || []).length === 0 && (
                                 <div className="border-border rounded-xl border-2 border-dashed py-12 text-center">
                                   <p className="text-muted-foreground text-sm">
-                                    No output fields defined yet
+                                    {t('noOutputFieldsYet')}
                                   </p>
                                 </div>
                               )}
@@ -1248,19 +1263,19 @@ export default function IntegrationConfigPage({
           <div>
             {step === 'config' && (
               <Button onClick={handleNextFromConfig} size="lg">
-                Next
+                {t('next')}
               </Button>
             )}
 
             {step === 'auth' && (
               <Button onClick={handleNextToTools} size="lg">
-                Next
+                {t('next')}
               </Button>
             )}
 
             {step === 'tools' && (
               <Button onClick={handleSave} size="lg">
-                Add {toolName || platform.name}
+                {t('addButton', { name: toolName || platform.name })}
               </Button>
             )}
           </div>

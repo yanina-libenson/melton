@@ -8,14 +8,16 @@ import { Label } from '@/components/ui/label'
 import { mockAgents } from '@/lib/mock-data'
 import { toast } from 'sonner'
 import Image from 'next/image'
+import { useTranslations } from 'next-intl'
 
 export default function EditIntegrationPage({
   params,
 }: {
-  params: Promise<{ id: string; integrationId: string }>
+  params: Promise<{ id: string; integrationId: string; locale: string }>
 }) {
   const resolvedParams = use(params)
   const router = useRouter()
+  const t = useTranslations('toolsEdit')
 
   const agent = mockAgents.find((a) => a.id === resolvedParams.id)
   const integration = agent?.integrations.find((i) => i.id === resolvedParams.integrationId)
@@ -25,7 +27,7 @@ export default function EditIntegrationPage({
   if (!agent || !integration) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <p className="font-light text-gray-400">Integration not found</p>
+        <p className="font-light text-gray-400">{t('integrationNotFound')}</p>
       </div>
     )
   }
@@ -38,17 +40,17 @@ export default function EditIntegrationPage({
 
   function handleSave() {
     if (enabledToolIds.length === 0) {
-      toast.error('Please enable at least one tool')
+      toast.error(t('errorAtLeastOneTool'))
       return
     }
 
-    toast.success('Integration updated')
+    toast.success(t('successUpdated'))
     router.push(`/agents/${resolvedParams.id}`)
   }
 
   function handleRemove() {
-    if (integration && confirm(`Remove ${integration.name}?`)) {
-      toast.success('Integration removed')
+    if (integration && confirm(t('confirmRemove', { name: integration.name }))) {
+      toast.success(t('successRemoved'))
       router.push(`/agents/${resolvedParams.id}`)
     }
   }
@@ -91,9 +93,14 @@ export default function EditIntegrationPage({
         {/* Tools Selection */}
         <div className="mb-12">
           <div className="mb-6">
-            <Label className="text-foreground mb-2 block text-sm font-medium">Select Tools</Label>
+            <Label className="text-foreground mb-2 block text-sm font-medium">
+              {t('selectToolsLabel')}
+            </Label>
             <p className="text-muted-foreground text-xs">
-              {enabledToolIds.length} of {integration.availableTools.length} selected
+              {t('toolsSelectedCount', {
+                count: enabledToolIds.length,
+                total: integration.availableTools.length,
+              })}
             </p>
           </div>
 
@@ -132,7 +139,7 @@ export default function EditIntegrationPage({
               onClick={handleRemove}
               className="text-muted-foreground hover:text-destructive text-sm transition-colors"
             >
-              Remove
+              {t('remove')}
             </button>
           </div>
           <div className="flex items-center justify-between">
@@ -143,7 +150,7 @@ export default function EditIntegrationPage({
               <span>←</span>
             </Link>
             <Button onClick={handleSave} size="lg">
-              Save
+              {t('save')}
             </Button>
           </div>
         </div>

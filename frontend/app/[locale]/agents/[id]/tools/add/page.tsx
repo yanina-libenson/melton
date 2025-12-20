@@ -7,11 +7,17 @@ import { Input } from '@/components/ui/input'
 import { PLATFORM_INTEGRATIONS } from '@/lib/platforms'
 import { useState } from 'react'
 import Image from 'next/image'
+import { useTranslations } from 'next-intl'
 
-export default function AddToolPage({ params }: { params: Promise<{ id: string }> }) {
+export default function AddToolPage({
+  params,
+}: {
+  params: Promise<{ id: string; locale: string }>
+}) {
   const resolvedParams = use(params)
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
+  const t = useTranslations('toolsAdd')
 
   const filteredIntegrations = PLATFORM_INTEGRATIONS.filter((integration) =>
     integration.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -34,14 +40,16 @@ export default function AddToolPage({ params }: { params: Promise<{ id: string }
 
         {/* Header */}
         <div className="mb-12">
-          <h1 className="text-foreground mb-2 text-4xl font-semibold tracking-tight">Add Tool</h1>
-          <p className="text-muted-foreground text-sm">Choose a tool to connect</p>
+          <h1 className="text-foreground mb-2 text-4xl font-semibold tracking-tight">
+            {t('title')}
+          </h1>
+          <p className="text-muted-foreground text-sm">{t('subtitle')}</p>
         </div>
 
         {/* Search */}
         <div className="mb-8">
           <Input
-            placeholder="Search tools..."
+            placeholder={t('searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -80,7 +88,7 @@ export default function AddToolPage({ params }: { params: Promise<{ id: string }
 
           {filteredIntegrations.length === 0 && (
             <div className="py-16 text-center">
-              <p className="text-muted-foreground text-sm">No tools found</p>
+              <p className="text-muted-foreground text-sm">{t('noToolsFound')}</p>
             </div>
           )}
         </div>

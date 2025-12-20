@@ -10,7 +10,11 @@
       "Bash(lsof:*)",
       "WebSearch",
       "Bash(find:*)",
-      "Bash(npm run type-check:*)"
+      "Bash(npm run type-check:*)",
+      "Bash(tree:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)",
+      "Bash(pkill:*)"
     ]
   }
 }
