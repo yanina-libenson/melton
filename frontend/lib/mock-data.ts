@@ -1,74 +1,54 @@
-import { Agent, Tool, McpServer, Conversation } from './types'
+import { Agent, IntegrationSource, Conversation } from './types'
+import { PLATFORM_TOOLS } from './platforms'
 
-export const mockTools: Tool[] = [
-  {
-    id: 'tool-1',
-    name: 'Get Order Status',
-    description: 'Retrieves the current status of a customer order',
-    type: 'api',
-    apiConfig: {
-      endpoint: 'https://api.example.com/orders/{orderId}',
-      method: 'GET',
-      authentication: 'bearer',
-      authConfig: {
-        bearerToken: 'sk_test_123...',
-      },
-      parameters: [
-        {
-          id: 'param-1',
-          name: 'orderId',
-          type: 'string',
-          required: true,
-          description: 'The unique identifier for the order',
-        },
-      ],
+const lookerIntegration: IntegrationSource = {
+  id: 'int-looker-1',
+  name: 'Looker',
+  type: 'platform',
+  description: 'Analytics and business intelligence',
+  icon: 'https://cdn.worldvectorlogo.com/logos/looker.svg',
+  platformId: 'looker',
+  config: {
+    authConfig: {
+      apiKeyValue: '••••••••',
     },
-    useLlm: false,
   },
-  {
-    id: 'tool-2',
-    name: 'Check Product Availability',
-    description: 'Checks if a product is in stock and returns availability information',
-    type: 'api',
-    apiConfig: {
-      endpoint: 'https://api.example.com/products/{productId}/availability',
-      method: 'GET',
-      authentication: 'api-key',
-      authConfig: {
-        apiKeyHeader: 'X-API-Key',
-        apiKeyValue: 'abc123...',
-      },
-      parameters: [
-        {
-          id: 'param-2',
-          name: 'productId',
-          type: 'string',
-          required: true,
-          description: 'Product SKU or ID',
-        },
-      ],
-    },
-    useLlm: true,
-    llmInstructions: 'If the product is out of stock, suggest similar available products to the customer.',
-  },
-]
+  availableTools: PLATFORM_TOOLS.looker || [],
+  enabledToolIds: ['looker-query-dashboard', 'looker-get-metrics'],
+}
 
-export const mockMcpServers: McpServer[] = [
-  {
-    id: 'mcp-1',
-    name: 'Database Query',
-    description: 'Query your database safely with natural language',
-    type: 'public',
-    isPublic: true,
+const customApiIntegration: IntegrationSource = {
+  id: 'int-custom-1',
+  name: 'Order Management API',
+  type: 'custom-tool',
+  description: 'Internal order tracking system',
+  config: {
+    endpoint: 'https://api.example.com/orders',
+    method: 'GET',
+    authentication: 'bearer',
+    authConfig: {
+      bearerToken: '••••••••',
+    },
+    parameters: [
+      {
+        id: 'param-1',
+        name: 'orderId',
+        type: 'string',
+        required: true,
+        description: 'Order ID to query',
+      },
+    ],
   },
-  {
-    id: 'mcp-2',
-    name: 'File System',
-    description: 'Read and search through your documentation files',
-    type: 'public',
-    isPublic: true,
-  },
-]
+  availableTools: [
+    {
+      id: 'custom-get-order',
+      name: 'Get Order Status',
+      description: 'Retrieve current order status',
+      sourceId: 'int-custom-1',
+    },
+  ],
+  enabledToolIds: ['custom-get-order'],
+}
 
 export const mockAgents: Agent[] = [
   {
@@ -83,8 +63,7 @@ export const mockAgents: Agent[] = [
     status: 'active',
     createdAt: '2024-12-15T10:00:00Z',
     updatedAt: '2024-12-19T14:30:00Z',
-    tools: [mockTools[0]],
-    mcpServers: [],
+    integrations: [lookerIntegration, customApiIntegration],
   },
   {
     id: 'agent-2',
@@ -98,8 +77,7 @@ export const mockAgents: Agent[] = [
     status: 'inactive',
     createdAt: '2024-12-10T09:00:00Z',
     updatedAt: '2024-12-18T16:20:00Z',
-    tools: [mockTools[1]],
-    mcpServers: [mockMcpServers[0]],
+    integrations: [],
   },
   {
     id: 'agent-3',
@@ -108,8 +86,7 @@ export const mockAgents: Agent[] = [
     status: 'draft',
     createdAt: '2024-12-19T12:00:00Z',
     updatedAt: '2024-12-19T12:00:00Z',
-    tools: [],
-    mcpServers: [],
+    integrations: [],
   },
 ]
 
@@ -143,7 +120,8 @@ export const mockConversations: Conversation[] = [
       {
         id: 'msg-3',
         role: 'agent',
-        content: 'Your order #12345 is currently in transit and should arrive by December 21st, 2024.',
+        content:
+          'Your order #12345 is currently in transit and should arrive by December 21st, 2024.',
         timestamp: '2024-12-19T15:30:06Z',
       },
     ],

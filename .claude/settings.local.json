@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app:*)",
+      "Bash(npx create-next-app@latest frontend --typescript --tailwind --app --no-src-dir --import-alias \"@/*\" --eslint --skip-git)",
+      "Bash(npx shadcn@latest init -d)",
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(npm run dev:*)",
+      "Bash(ls:*)",
+      "Bash(lsof:*)",
+      "WebSearch",
+      "Bash(find:*)",
+      "Bash(npm run type-check:*)"
+    ]
+  }
+}
