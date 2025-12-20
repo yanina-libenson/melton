@@ -1,0 +1,1264 @@
+'use client'
+
+import { useState, use, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { PLATFORM_INTEGRATIONS, PLATFORM_TOOLS } from '@/lib/platforms'
+import { Tool, AuthenticationType, HttpMethod, CustomToolType } from '@/lib/types'
+import { toast } from 'sonner'
+import { mockAgents } from '@/lib/mock-data'
+
+export default function IntegrationConfigPage({
+  params,
+}: {
+  params: Promise<{ id: string; platformId: string }>
+}) {
+  const resolvedParams = use(params)
+  const router = useRouter()
+
+  const platform = PLATFORM_INTEGRATIONS.find((p) => p.id === resolvedParams.platformId)
+  const isCustomTool = resolvedParams.platformId === 'custom-tool'
+  const isSubAgent = resolvedParams.platformId === 'sub-agent'
+
+  // Pre-built integration tools or empty for custom
+  const [tools, setTools] = useState<Tool[]>(
+    isCustomTool || isSubAgent ? [] : PLATFORM_TOOLS[resolvedParams.platformId] || []
+  )
+
+  const [authData, setAuthData] = useState<Record<string, string>>({})
+  const [enabledToolIds, setEnabledToolIds] = useState<string[]>(tools.map((t) => t.id))
+  const [step, setStep] = useState<'type-selection' | 'auth' | 'tools' | 'config'>(
+    isCustomTool ? 'type-selection' : isSubAgent ? 'config' : 'auth'
+  )
+
+  // Custom tool type selection
+  const [customToolType, setCustomToolType] = useState<CustomToolType | null>(null)
+
+  // Custom tool fields
+  const [toolName, setToolName] = useState(platform?.name || '')
+  const [toolDescription, setToolDescription] = useState(platform?.description || '')
+  const [authType, setAuthType] = useState<AuthenticationType>('none')
+  const [baseUrl, setBaseUrl] = useState('')
+
+  // Sub-agent selection
+  const [selectedSubAgentId, setSelectedSubAgentId] = useState<string>('')
+
+  // OpenAPI Discovery
+  const [openApiUrl, setOpenApiUrl] = useState('')
+  const [isDiscovering, setIsDiscovering] = useState(false)
+  const [discoveryMethod, setDiscoveryMethod] = useState<'openapi' | 'manual'>('openapi')
+
+  // Tool configuration
+  const [expandedToolId, setExpandedToolId] = useState<string | null>(null)
+  const [toolConfigs, setToolConfigs] = useState<
+    Record<
+      string,
+      {
+        llmEnabled: boolean
+        llmModel: string
+        llmInstructions: string
+      }
+    >
+  >({})
+
+  // Manual endpoint creation
+  const [showEndpointForm, setShowEndpointForm] = useState(false)
+  const [newEndpoint, setNewEndpoint] = useState({
+    name: '',
+    description: '',
+    method: 'GET' as HttpMethod,
+    path: '',
+  })
+
+  // Tool schema configuration
+  const [toolSchemas, setToolSchemas] = useState<
+    Record<
+      string,
+      {
+        inputFields: Array<{
+          name: string
+          type: 'text' | 'number' | 'boolean' | 'select'
+          description: string
+          required: boolean
+          options?: string[]
+        }>
+        outputFields: Array<{
+          name: string
+          description: string
+        }>
+      }
+    >
+  >({})
+
+  // Auto-expand first enabled tool when on tools step
+  useEffect(() => {
+    if (step === 'tools' && enabledToolIds.length > 0 && !expandedToolId) {
+      const firstToolId = enabledToolIds[0]
+      if (firstToolId) {
+        setExpandedToolId(firstToolId)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, enabledToolIds])
+
+  if (!platform) {
+    return null
+  }
+
+  async function handleDiscoverEndpoints() {
+    if (!openApiUrl.trim()) {
+      toast.error('Please enter an OpenAPI spec URL')
+      return
+    }
+
+    setIsDiscovering(true)
+
+    // Mock discovery - in production this would call the backend
+    setTimeout(() => {
+      const mockDiscoveredTools: Tool[] = [
+        {
+          id: 'discovered-1',
+          name: 'Get Users',
+          description: 'Retrieve a list of users',
+          sourceId: 'custom-api',
+        },
+        {
+          id: 'discovered-2',
+          name: 'Create User',
+          description: 'Create a new user',
+          sourceId: 'custom-api',
+        },
+        {
+          id: 'discovered-3',
+          name: 'Get User by ID',
+          description: 'Retrieve a specific user by ID',
+          sourceId: 'custom-api',
+        },
+      ]
+
+      setTools(mockDiscoveredTools)
+      setEnabledToolIds([]) // Start with all unselected
+      setIsDiscovering(false)
+      toast.success(`Discovered ${mockDiscoveredTools.length} endpoints`)
+    }, 1500)
+  }
+
+  function handleAddEndpoint() {
+    if (!newEndpoint.name.trim()) {
+      toast.error('Endpoint name is required')
+      return
+    }
+    if (!newEndpoint.path.trim()) {
+      toast.error('Endpoint path is required')
+      return
+    }
+
+    const endpoint: Tool = {
+      id: `custom-${Date.now()}`,
+      name: newEndpoint.name,
+      description: newEndpoint.description,
+      sourceId: 'custom-api',
+    }
+
+    setTools([...tools, endpoint])
+    // Don't auto-enable - let user select it
+    setNewEndpoint({ name: '', description: '', method: 'GET', path: '' })
+    setShowEndpointForm(false)
+    toast.success('Endpoint added')
+  }
+
+  function handleToggleTool(toolId: string) {
+    setEnabledToolIds((prev) => {
+      const isCurrentlyEnabled = prev.includes(toolId)
+
+      if (isCurrentlyEnabled) {
+        // Disabling - collapse it
+        if (expandedToolId === toolId) {
+          setExpandedToolId(null)
+        }
+        return prev.filter((id) => id !== toolId)
+      } else {
+        // Enabling - auto-expand it
+        setExpandedToolId(toolId)
+        return [...prev, toolId]
+      }
+    })
+  }
+
+  function addInputField(toolId: string) {
+    const schema = toolSchemas[toolId] || { inputFields: [], outputFields: [] }
+    setToolSchemas({
+      ...toolSchemas,
+      [toolId]: {
+        ...schema,
+        inputFields: [
+          ...schema.inputFields,
+          { name: '', type: 'text', description: '', required: false },
+        ],
+      },
+    })
+  }
+
+  function updateInputField(
+    toolId: string,
+    index: number,
+    field: Partial<(typeof toolSchemas)[string]['inputFields'][0]>
+  ) {
+    const schema = toolSchemas[toolId]
+    if (!schema) return
+
+    const updatedFields = [...schema.inputFields]
+    const existingField = updatedFields[index]
+    if (!existingField) return
+
+    updatedFields[index] = { ...existingField, ...field }
+
+    setToolSchemas({
+      ...toolSchemas,
+      [toolId]: { ...schema, inputFields: updatedFields },
+    })
+  }
+
+  function removeInputField(toolId: string, index: number) {
+    const schema = toolSchemas[toolId]
+    if (!schema) return
+
+    setToolSchemas({
+      ...toolSchemas,
+      [toolId]: {
+        ...schema,
+        inputFields: schema.inputFields.filter((_, i) => i !== index),
+      },
+    })
+  }
+
+  function addOutputField(toolId: string) {
+    const schema = toolSchemas[toolId] || { inputFields: [], outputFields: [] }
+    setToolSchemas({
+      ...toolSchemas,
+      [toolId]: {
+        ...schema,
+        outputFields: [...schema.outputFields, { name: '', description: '' }],
+      },
+    })
+  }
+
+  function updateOutputField(
+    toolId: string,
+    index: number,
+    field: Partial<(typeof toolSchemas)[string]['outputFields'][0]>
+  ) {
+    const schema = toolSchemas[toolId]
+    if (!schema) return
+
+    const updatedFields = [...schema.outputFields]
+    const existingField = updatedFields[index]
+    if (!existingField) return
+
+    updatedFields[index] = { ...existingField, ...field }
+
+    setToolSchemas({
+      ...toolSchemas,
+      [toolId]: { ...schema, outputFields: updatedFields },
+    })
+  }
+
+  function removeOutputField(toolId: string, index: number) {
+    const schema = toolSchemas[toolId]
+    if (!schema) return
+
+    setToolSchemas({
+      ...toolSchemas,
+      [toolId]: {
+        ...schema,
+        outputFields: schema.outputFields.filter((_, i) => i !== index),
+      },
+    })
+  }
+
+  function handleSelectToolType(type: CustomToolType) {
+    setCustomToolType(type)
+
+    // For LLM-only, go straight to config
+    if (type === 'llm') {
+      setStep('config')
+    } else {
+      // For API and API+LLM, go to auth
+      setStep('auth')
+    }
+  }
+
+  function handleNextToTools() {
+    if (!platform) return
+
+    // Validate custom tool fields that need API
+    if (isCustomTool && customToolType === 'api') {
+      if (!toolName.trim()) {
+        toast.error('Tool name is required')
+        return
+      }
+      if (!baseUrl.trim()) {
+        toast.error('Base URL is required')
+        return
+      }
+    }
+
+    // Validate pre-built auth fields
+    if (platform.requiresAuth && !isCustomTool && !isSubAgent) {
+      const missingFields = platform.authFields.filter(
+        (field) => field.required && !authData[field.name]?.trim()
+      )
+
+      if (missingFields.length > 0) {
+        toast.error(`Please fill in all required fields`)
+        return
+      }
+    }
+
+    setStep('tools')
+  }
+
+  function handleNextFromConfig() {
+    if (isSubAgent) {
+      if (!selectedSubAgentId) {
+        toast.error('Please select a sub-agent')
+        return
+      }
+      // Create a tool from the selected agent
+      const subAgent = mockAgents.find((a) => a.id === selectedSubAgentId)
+      if (subAgent) {
+        const tool: Tool = {
+          id: `sub-agent-${selectedSubAgentId}`,
+          name: subAgent.name,
+          description: `Use ${subAgent.name} as a tool`,
+          sourceId: 'sub-agent',
+          toolType: 'sub-agent',
+          subAgentId: selectedSubAgentId,
+        }
+        setTools([tool])
+        setEnabledToolIds([tool.id])
+        setExpandedToolId(tool.id)
+      }
+    } else if (isCustomTool && customToolType === 'llm') {
+      if (!toolName.trim()) {
+        toast.error('Tool name is required')
+        return
+      }
+      const config = toolConfigs['llm-default'] || {
+        llmModel: 'claude-sonnet-4',
+        llmInstructions: '',
+      }
+      // Create an LLM-only tool
+      const tool: Tool = {
+        id: `llm-${Date.now()}`,
+        name: toolName,
+        description: toolDescription,
+        sourceId: 'custom-tool',
+        toolType: 'llm',
+        llmModel: config.llmModel as 'gpt-4' | 'claude-sonnet-4' | 'claude-opus-4',
+        llmInstructions: config.llmInstructions,
+      }
+      setTools([tool])
+      setEnabledToolIds([tool.id])
+      setExpandedToolId(tool.id)
+    }
+    setStep('tools')
+  }
+
+  function handleSave() {
+    if (enabledToolIds.length === 0) {
+      toast.error('Please enable at least one tool')
+      return
+    }
+
+    toast.success(`${toolName || platform?.name || 'Tool'} added`)
+    router.push(`/agents/${resolvedParams.id}`)
+  }
+
+  return (
+    <div className="bg-background min-h-screen">
+      <div className="mx-auto max-w-3xl px-8 py-16">
+        {/* Back Button */}
+        <button
+          onClick={() => {
+            if (step === 'type-selection') {
+              router.push(`/agents/${resolvedParams.id}/tools/add`)
+            } else if (step === 'config') {
+              if (isCustomTool) {
+                setStep('type-selection')
+              } else {
+                router.push(`/agents/${resolvedParams.id}/tools/add`)
+              }
+            } else if (step === 'auth') {
+              if (isCustomTool) {
+                setStep('type-selection')
+              } else {
+                router.push(`/agents/${resolvedParams.id}/tools/add`)
+              }
+            } else if (step === 'tools') {
+              if (isSubAgent || (isCustomTool && customToolType === 'llm')) {
+                setStep('config')
+              } else if (isCustomTool && customToolType === 'api') {
+                setStep('auth')
+              } else {
+                setStep('auth')
+              }
+            }
+          }}
+          className="text-muted-foreground hover:text-foreground mb-8 inline-flex items-center gap-1 transition-colors"
+        >
+          <span>←</span>
+        </button>
+
+        {/* Header */}
+        <div className="mb-12">
+          <div className="flex items-center gap-4">
+            <img src={platform.icon} alt={platform.name} className="h-12 w-12 object-contain" />
+            <div>
+              <h1 className="text-foreground text-3xl font-semibold tracking-tight">
+                {platform.name}
+              </h1>
+              <p className="text-muted-foreground mt-1 text-sm">{platform.description}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Tool Type Selection Step (Custom Tool only) */}
+        {step === 'type-selection' && isCustomTool && (
+          <div className="mb-12">
+            <Label className="text-foreground mb-4 block text-sm font-medium">
+              Choose tool type
+            </Label>
+            <div className="grid grid-cols-1 gap-3">
+              <button
+                onClick={() => handleSelectToolType('llm')}
+                className="border-border bg-card shadow-soft-xs hover:shadow-soft-sm hover:border-border cursor-pointer rounded-xl border px-6 py-5 text-left transition-all duration-200 ease-out hover:-translate-y-0.5"
+              >
+                <p className="text-foreground mb-1 text-sm font-medium">LLM</p>
+                <p className="text-muted-foreground text-xs">
+                  Pure LLM tool for processing and transformations
+                </p>
+              </button>
+
+              <button
+                onClick={() => handleSelectToolType('api')}
+                className="border-border bg-card shadow-soft-xs hover:shadow-soft-sm hover:border-border cursor-pointer rounded-xl border px-6 py-5 text-left transition-all duration-200 ease-out hover:-translate-y-0.5"
+              >
+                <p className="text-foreground mb-1 text-sm font-medium">API</p>
+                <p className="text-muted-foreground text-xs">
+                  Connect to an API, optionally enhance with LLM
+                </p>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Sub-Agent Configuration */}
+        {step === 'config' && isSubAgent && (
+          <div className="mb-12 space-y-8">
+            <div>
+              <Label className="text-foreground mb-3 block text-sm font-medium">Select Agent</Label>
+              <Select value={selectedSubAgentId} onValueChange={setSelectedSubAgentId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose an agent to use as a tool" />
+                </SelectTrigger>
+                <SelectContent>
+                  {mockAgents
+                    .filter((a) => a.id !== resolvedParams.id)
+                    .map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id}>
+                        {agent.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-muted-foreground mt-2 text-xs">
+                This agent will be available as a tool within the current agent
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* LLM-Only Configuration */}
+        {step === 'config' && isCustomTool && customToolType === 'llm' && (
+          <div className="mb-12 space-y-8">
+            <div>
+              <Label className="text-foreground mb-3 block text-sm font-medium">Tool Name</Label>
+              <Input
+                placeholder="Sentiment Analyzer"
+                value={toolName}
+                onChange={(e) => setToolName(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <Label className="text-foreground mb-3 block text-sm font-medium">Description</Label>
+              <Textarea
+                placeholder="What does this LLM tool do?"
+                value={toolDescription}
+                onChange={(e) => setToolDescription(e.target.value)}
+                rows={3}
+              />
+            </div>
+
+            <div>
+              <Label className="text-foreground mb-3 block text-sm font-medium">Model</Label>
+              <Select
+                value={toolConfigs['llm-default']?.llmModel || 'claude-sonnet-4'}
+                onValueChange={(value) =>
+                  setToolConfigs({
+                    ...toolConfigs,
+                    'llm-default': {
+                      ...toolConfigs['llm-default'],
+                      llmModel: value,
+                      llmEnabled: true,
+                      llmInstructions: toolConfigs['llm-default']?.llmInstructions || '',
+                    },
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="claude-sonnet-4">Claude Sonnet 4</SelectItem>
+                  <SelectItem value="claude-opus-4">Claude Opus 4</SelectItem>
+                  <SelectItem value="gpt-4">GPT-4</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="text-foreground mb-3 block text-sm font-medium">Instructions</Label>
+              <Textarea
+                placeholder="System prompt for this LLM tool. For example: 'You are a sentiment analyzer. Analyze the input text and return only: positive, negative, or neutral.'"
+                value={toolConfigs['llm-default']?.llmInstructions || ''}
+                onChange={(e) =>
+                  setToolConfigs({
+                    ...toolConfigs,
+                    'llm-default': {
+                      ...toolConfigs['llm-default'],
+                      llmModel: toolConfigs['llm-default']?.llmModel || 'claude-sonnet-4',
+                      llmEnabled: true,
+                      llmInstructions: e.target.value,
+                    },
+                  })
+                }
+                rows={6}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Authentication/Configuration Step */}
+        {step === 'auth' && (
+          <div className="mb-12 space-y-8">
+            {isCustomTool && customToolType === 'api' ? (
+              <>
+                {/* Custom Tool Configuration */}
+                <div>
+                  <Label className="text-foreground mb-3 block text-sm font-medium">
+                    Tool Name
+                  </Label>
+                  <Input
+                    placeholder="My API"
+                    value={toolName}
+                    onChange={(e) => setToolName(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-foreground mb-3 block text-sm font-medium">
+                    Description
+                  </Label>
+                  <Textarea
+                    placeholder="What does this API do?"
+                    value={toolDescription}
+                    onChange={(e) => setToolDescription(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-foreground mb-3 block text-sm font-medium">Base URL</Label>
+                  <Input
+                    type="url"
+                    placeholder="https://api.example.com"
+                    value={baseUrl}
+                    onChange={(e) => setBaseUrl(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-foreground mb-3 block text-sm font-medium">
+                    Authentication
+                  </Label>
+                  <Select
+                    value={authType}
+                    onValueChange={(value: AuthenticationType) => {
+                      setAuthType(value)
+                      setAuthData({})
+                    }}
+                  >
+                    <SelectTrigger className="mb-4">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="api-key">API Key</SelectItem>
+                      <SelectItem value="bearer">Bearer Token</SelectItem>
+                      <SelectItem value="basic">Basic Auth</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {authType === 'api-key' && (
+                    <div className="space-y-4">
+                      <Input
+                        placeholder="Header name (e.g., X-API-Key)"
+                        value={authData.apiKeyHeader || ''}
+                        onChange={(e) => setAuthData({ ...authData, apiKeyHeader: e.target.value })}
+                      />
+                      <Input
+                        type="password"
+                        placeholder="API Key"
+                        value={authData.apiKeyValue || ''}
+                        onChange={(e) => setAuthData({ ...authData, apiKeyValue: e.target.value })}
+                      />
+                    </div>
+                  )}
+
+                  {authType === 'bearer' && (
+                    <Input
+                      type="password"
+                      placeholder="Bearer Token"
+                      value={authData.bearerToken || ''}
+                      onChange={(e) => setAuthData({ ...authData, bearerToken: e.target.value })}
+                    />
+                  )}
+
+                  {authType === 'basic' && (
+                    <div className="space-y-4">
+                      <Input
+                        placeholder="Username"
+                        value={authData.username || ''}
+                        onChange={(e) => setAuthData({ ...authData, username: e.target.value })}
+                      />
+                      <Input
+                        type="password"
+                        placeholder="Password"
+                        value={authData.password || ''}
+                        onChange={(e) => setAuthData({ ...authData, password: e.target.value })}
+                      />
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Pre-built Tool Auth Fields */}
+                {platform.authFields.map((field) => (
+                  <div key={field.name}>
+                    <Label className="text-foreground mb-3 block text-sm font-medium">
+                      {field.label}
+                      {field.required && <span className="text-destructive ml-1">*</span>}
+                    </Label>
+                    <Input
+                      type={field.type}
+                      placeholder={field.placeholder}
+                      value={authData[field.name] || ''}
+                      onChange={(e) => setAuthData({ ...authData, [field.name]: e.target.value })}
+                    />
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Tools Selection Step */}
+        {step === 'tools' && (
+          <div className="mb-12">
+            {/* OpenAPI Discovery (only for API-based custom tools) */}
+            {isCustomTool && customToolType === 'api' && (
+              <>
+                {/* Toggle between OpenAPI and Manual */}
+                <div className="mb-8">
+                  <div className="border-border bg-muted/50 inline-flex rounded-lg border p-1">
+                    <button
+                      onClick={() => setDiscoveryMethod('openapi')}
+                      className={`rounded-md px-4 py-2 text-sm font-medium transition-all ${
+                        discoveryMethod === 'openapi'
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      Auto-discover
+                    </button>
+                    <button
+                      onClick={() => setDiscoveryMethod('manual')}
+                      className={`rounded-md px-4 py-2 text-sm font-medium transition-all ${
+                        discoveryMethod === 'manual'
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      Add manually
+                    </button>
+                  </div>
+                </div>
+
+                {/* OpenAPI Discovery */}
+                {discoveryMethod === 'openapi' && (
+                  <div className="mb-8">
+                    <p className="text-muted-foreground mb-4 text-sm">
+                      Automatically import endpoints from an OpenAPI/Swagger specification
+                    </p>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="https://api.example.com/openapi.json"
+                        value={openApiUrl}
+                        onChange={(e) => setOpenApiUrl(e.target.value)}
+                        disabled={isDiscovering}
+                        className="flex-1"
+                      />
+                      <Button onClick={handleDiscoverEndpoints} disabled={isDiscovering}>
+                        {isDiscovering ? 'Discovering...' : 'Discover'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Manual Endpoint Creation */}
+                {discoveryMethod === 'manual' && (
+                  <div className="mb-8">
+                    <div className="mb-4 flex items-center justify-between">
+                      <p className="text-muted-foreground text-sm">
+                        Configure individual API endpoints
+                      </p>
+                      {!showEndpointForm && (
+                        <Button onClick={() => setShowEndpointForm(true)} size="sm">
+                          Add Endpoint
+                        </Button>
+                      )}
+                    </div>
+
+                    {showEndpointForm && (
+                      <div className="border-border bg-card shadow-soft-xs space-y-4 rounded-xl border p-5">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <Label className="text-foreground mb-2 block text-xs font-medium">
+                              Endpoint Name *
+                            </Label>
+                            <Input
+                              placeholder="Get User"
+                              value={newEndpoint.name}
+                              onChange={(e) =>
+                                setNewEndpoint({ ...newEndpoint, name: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-foreground mb-2 block text-xs font-medium">
+                              HTTP Method
+                            </Label>
+                            <Select
+                              value={newEndpoint.method}
+                              onValueChange={(value: HttpMethod) =>
+                                setNewEndpoint({ ...newEndpoint, method: value })
+                              }
+                            >
+                              <SelectTrigger className="h-10">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="GET">GET</SelectItem>
+                                <SelectItem value="POST">POST</SelectItem>
+                                <SelectItem value="PUT">PUT</SelectItem>
+                                <SelectItem value="DELETE">DELETE</SelectItem>
+                                <SelectItem value="PATCH">PATCH</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label className="text-foreground mb-2 block text-xs font-medium">
+                            Path *
+                          </Label>
+                          <Input
+                            placeholder="/users/:id"
+                            value={newEndpoint.path}
+                            onChange={(e) =>
+                              setNewEndpoint({ ...newEndpoint, path: e.target.value })
+                            }
+                          />
+                        </div>
+
+                        <div>
+                          <Label className="text-foreground mb-2 block text-xs font-medium">
+                            Description
+                          </Label>
+                          <Textarea
+                            placeholder="What does this endpoint do?"
+                            value={newEndpoint.description}
+                            onChange={(e) =>
+                              setNewEndpoint({ ...newEndpoint, description: e.target.value })
+                            }
+                            rows={2}
+                            className="text-xs"
+                          />
+                        </div>
+
+                        <div className="flex gap-2 pt-2">
+                          <Button onClick={handleAddEndpoint} size="sm">
+                            Add
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              setShowEndpointForm(false)
+                              setNewEndpoint({ name: '', description: '', method: 'GET', path: '' })
+                            }}
+                            variant="ghost"
+                            size="sm"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="mb-6">
+              <Label className="text-foreground mb-2 block text-sm font-medium">
+                {isCustomTool || isSubAgent
+                  ? isSubAgent
+                    ? 'Sub-Agent'
+                    : customToolType === 'llm'
+                      ? 'LLM Tool'
+                      : 'API Endpoints'
+                  : 'Select Tools'}
+              </Label>
+              <p className="text-muted-foreground text-xs">
+                {enabledToolIds.length} of {tools.length} selected
+              </p>
+            </div>
+
+            {tools.length === 0 && isCustomTool && customToolType === 'api' ? (
+              <div className="border-border bg-card shadow-soft-xs rounded-xl border py-12 text-center">
+                <p className="text-muted-foreground mb-2 text-sm">No endpoints configured yet</p>
+                <p className="text-muted-foreground text-xs">
+                  Use OpenAPI discovery above or add endpoints manually
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {tools.map((tool) => {
+                  const isExpanded = expandedToolId === tool.id
+                  const isEnabled = enabledToolIds.includes(tool.id)
+                  const config = toolConfigs[tool.id] || {
+                    llmEnabled: false,
+                    llmModel: 'claude-sonnet-4',
+                    llmInstructions: '',
+                  }
+
+                  return (
+                    <div
+                      key={tool.id}
+                      className={`rounded-xl border transition-all duration-200 ease-out ${
+                        isEnabled
+                          ? 'border-primary bg-primary/5 shadow-soft-sm'
+                          : 'border-border bg-card shadow-soft-xs hover:shadow-soft-sm hover:border-border'
+                      }`}
+                    >
+                      {/* Tool Header */}
+                      <div className="px-5 py-4">
+                        <div className="flex items-start gap-3">
+                          <input
+                            type="checkbox"
+                            checked={isEnabled}
+                            onChange={() => handleToggleTool(tool.id)}
+                            className="mt-0.5 h-4 w-4 cursor-pointer"
+                          />
+                          <div className="flex-1">
+                            <p className="text-foreground text-sm font-medium">{tool.name}</p>
+                            <p className="text-muted-foreground mt-1 text-xs">{tool.description}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* LLM Configuration (Expanded) - Optional for API custom tools */}
+                      {isExpanded && isEnabled && isCustomTool && customToolType === 'api' && (
+                        <div className="border-border border-t px-5 pt-4 pb-5">
+                          <div className="bg-muted/30 border-border space-y-4 rounded-lg border p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="text-foreground text-sm font-medium">
+                                  Enhance with LLM
+                                </div>
+                                <p className="text-muted-foreground mt-0.5 text-xs">
+                                  Process inputs and outputs with AI
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setToolConfigs({
+                                    ...toolConfigs,
+                                    [tool.id]: { ...config, llmEnabled: !config.llmEnabled },
+                                  })
+                                }
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                  config.llmEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
+                                }`}
+                              >
+                                <span
+                                  className={`bg-background inline-block h-4 w-4 transform rounded-full transition-transform ${
+                                    config.llmEnabled ? 'translate-x-6' : 'translate-x-1'
+                                  }`}
+                                />
+                              </button>
+                            </div>
+
+                            {config.llmEnabled && (
+                              <div className="space-y-3 pt-2">
+                                <div>
+                                  <Label className="text-muted-foreground mb-2 block text-xs">
+                                    Model
+                                  </Label>
+                                  <Select
+                                    value={config.llmModel}
+                                    onValueChange={(value) =>
+                                      setToolConfigs({
+                                        ...toolConfigs,
+                                        [tool.id]: { ...config, llmModel: value },
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger className="bg-background h-9 text-xs">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="claude-sonnet-4">
+                                        Claude Sonnet 4
+                                      </SelectItem>
+                                      <SelectItem value="claude-opus-4">Claude Opus 4</SelectItem>
+                                      <SelectItem value="gpt-4">GPT-4</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+
+                                <div>
+                                  <Label className="text-muted-foreground mb-2 block text-xs">
+                                    Instructions
+                                  </Label>
+                                  <Textarea
+                                    placeholder="How should the LLM process this tool's input/output?"
+                                    value={config.llmInstructions}
+                                    onChange={(e) =>
+                                      setToolConfigs({
+                                        ...toolConfigs,
+                                        [tool.id]: { ...config, llmInstructions: e.target.value },
+                                      })
+                                    }
+                                    rows={3}
+                                    className="bg-background text-xs"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Schema Configuration (Expanded) - For all custom tools and LLM tools */}
+                      {isExpanded && isEnabled && (isCustomTool || tool.toolType === 'llm') && (
+                        <div className="border-border space-y-10 border-t px-6 pt-4 pb-6">
+                          {/* Input Fields */}
+                          <div>
+                            <div className="mb-6 flex items-center justify-between">
+                              <div>
+                                <h3 className="text-foreground mb-1 text-sm font-medium">
+                                  What information does this tool need?
+                                </h3>
+                                <p className="text-muted-foreground text-sm">
+                                  Define what the agent should send to this tool
+                                </p>
+                              </div>
+                              <Button
+                                onClick={() => addInputField(tool.id)}
+                                variant="outline"
+                                size="default"
+                              >
+                                Add field
+                              </Button>
+                            </div>
+
+                            <div className="space-y-4">
+                              {(toolSchemas[tool.id]?.inputFields || []).map((field, index) => (
+                                <div
+                                  key={index}
+                                  className="border-border bg-card shadow-soft-xs space-y-4 rounded-xl border p-5"
+                                >
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                      <Label className="text-muted-foreground mb-2 block text-xs">
+                                        Field name
+                                      </Label>
+                                      <Input
+                                        placeholder="e.g., text"
+                                        value={field.name}
+                                        onChange={(e) =>
+                                          updateInputField(tool.id, index, { name: e.target.value })
+                                        }
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label className="text-muted-foreground mb-2 block text-xs">
+                                        Type
+                                      </Label>
+                                      <Select
+                                        value={field.type}
+                                        onValueChange={(
+                                          value: 'text' | 'number' | 'boolean' | 'select'
+                                        ) => updateInputField(tool.id, index, { type: value })}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="text">Text</SelectItem>
+                                          <SelectItem value="number">Number</SelectItem>
+                                          <SelectItem value="boolean">Yes or No</SelectItem>
+                                          <SelectItem value="select">Choose from list</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <Label className="text-muted-foreground mb-2 block text-xs">
+                                      Description
+                                    </Label>
+                                    <Input
+                                      placeholder="e.g., The text to analyze"
+                                      value={field.description}
+                                      onChange={(e) =>
+                                        updateInputField(tool.id, index, {
+                                          description: e.target.value,
+                                        })
+                                      }
+                                    />
+                                    <p className="text-muted-foreground mt-1.5 text-xs">
+                                      Helps the agent understand what to provide
+                                    </p>
+                                  </div>
+
+                                  {field.type === 'select' && (
+                                    <div>
+                                      <Label className="text-muted-foreground mb-2 block text-xs">
+                                        Options
+                                      </Label>
+                                      <Input
+                                        placeholder="e.g., positive, negative, neutral"
+                                        value={field.options?.join(', ') || ''}
+                                        onChange={(e) =>
+                                          updateInputField(tool.id, index, {
+                                            options: e.target.value.split(',').map((o) => o.trim()),
+                                          })
+                                        }
+                                      />
+                                      <p className="text-muted-foreground mt-1.5 text-xs">
+                                        Separate options with commas
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  <div className="border-border flex items-center justify-between border-t pt-4">
+                                    <label className="text-muted-foreground flex cursor-pointer items-center gap-2 text-xs">
+                                      <input
+                                        type="checkbox"
+                                        checked={field.required}
+                                        onChange={(e) =>
+                                          updateInputField(tool.id, index, {
+                                            required: e.target.checked,
+                                          })
+                                        }
+                                        className="h-4 w-4"
+                                      />
+                                      Required field
+                                    </label>
+                                    <button
+                                      onClick={() => removeInputField(tool.id, index)}
+                                      className="text-muted-foreground hover:text-foreground text-xs transition-colors"
+                                    >
+                                      Remove field
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+
+                              {(toolSchemas[tool.id]?.inputFields || []).length === 0 && (
+                                <div className="border-border rounded-xl border-2 border-dashed py-12 text-center">
+                                  <p className="text-muted-foreground text-sm">
+                                    No input fields defined yet
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Output Configuration */}
+                          <div>
+                            <div className="mb-6 flex items-center justify-between">
+                              <div>
+                                <h3 className="text-foreground mb-1 text-sm font-medium">
+                                  What does this tool return?
+                                </h3>
+                                <p className="text-muted-foreground text-sm">
+                                  Define the fields this tool will send back
+                                </p>
+                              </div>
+                              <Button
+                                onClick={() => addOutputField(tool.id)}
+                                variant="outline"
+                                size="default"
+                              >
+                                Add field
+                              </Button>
+                            </div>
+
+                            <div className="space-y-4">
+                              {(toolSchemas[tool.id]?.outputFields || []).map((field, index) => (
+                                <div
+                                  key={index}
+                                  className="border-border bg-card shadow-soft-xs space-y-4 rounded-xl border p-5"
+                                >
+                                  <div>
+                                    <Label className="text-muted-foreground mb-2 block text-xs">
+                                      Field name
+                                    </Label>
+                                    <Input
+                                      placeholder="e.g., message"
+                                      value={field.name}
+                                      onChange={(e) =>
+                                        updateOutputField(tool.id, index, { name: e.target.value })
+                                      }
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-muted-foreground mb-2 block text-xs">
+                                      Description
+                                    </Label>
+                                    <Input
+                                      placeholder="e.g., The response message"
+                                      value={field.description}
+                                      onChange={(e) =>
+                                        updateOutputField(tool.id, index, {
+                                          description: e.target.value,
+                                        })
+                                      }
+                                    />
+                                    <p className="text-muted-foreground mt-1.5 text-xs">
+                                      What this field contains
+                                    </p>
+                                  </div>
+                                  <div className="border-border flex justify-end border-t pt-4">
+                                    <button
+                                      onClick={() => removeOutputField(tool.id, index)}
+                                      className="text-muted-foreground hover:text-foreground text-xs transition-colors"
+                                    >
+                                      Remove field
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+
+                              {(toolSchemas[tool.id]?.outputFields || []).length === 0 && (
+                                <div className="border-border rounded-xl border-2 border-dashed py-12 text-center">
+                                  <p className="text-muted-foreground text-sm">
+                                    No output fields defined yet
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="border-border flex items-center justify-between border-t pt-8">
+          <button
+            onClick={() => {
+              if (step === 'type-selection') {
+                router.push(`/agents/${resolvedParams.id}/tools/add`)
+              } else if (step === 'config') {
+                if (isCustomTool) {
+                  setStep('type-selection')
+                } else {
+                  router.push(`/agents/${resolvedParams.id}/tools/add`)
+                }
+              } else if (step === 'auth') {
+                if (isCustomTool) {
+                  setStep('type-selection')
+                } else {
+                  router.push(`/agents/${resolvedParams.id}/tools/add`)
+                }
+              } else if (step === 'tools') {
+                if (isSubAgent || (isCustomTool && customToolType === 'llm')) {
+                  setStep('config')
+                } else if (isCustomTool && customToolType === 'api') {
+                  setStep('auth')
+                } else {
+                  setStep('auth')
+                }
+              }
+            }}
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
+          >
+            <span>←</span>
+          </button>
+
+          <div>
+            {step === 'config' && (
+              <Button onClick={handleNextFromConfig} size="lg">
+                Next
+              </Button>
+            )}
+
+            {step === 'auth' && (
+              <Button onClick={handleNextToTools} size="lg">
+                Next
+              </Button>
+            )}
+
+            {step === 'tools' && (
+              <Button onClick={handleSave} size="lg">
+                Add {toolName || platform.name}
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,269 @@
+import { PlatformIntegration, Tool } from './types'
+
+export const PLATFORM_INTEGRATIONS: PlatformIntegration[] = [
+  {
+    id: 'custom-tool',
+    name: 'Custom Tool',
+    description: 'Create an LLM tool or connect to an API',
+    icon: 'https://api.iconify.design/lucide/plus-circle.svg?color=%23888888',
+    category: 'Custom',
+    requiresAuth: false,
+    authFields: [],
+  },
+  {
+    id: 'sub-agent',
+    name: 'Sub-Agent',
+    description: 'Use another agent as a tool within this agent',
+    icon: 'https://api.iconify.design/lucide/bot.svg?color=%23888888',
+    category: 'Custom',
+    requiresAuth: false,
+    authFields: [],
+  },
+  {
+    id: 'looker',
+    name: 'Looker',
+    description: 'Query dashboards, retrieve metrics, and access business intelligence data',
+    icon: 'https://cdn.worldvectorlogo.com/logos/looker.svg',
+    category: 'Analytics',
+    requiresAuth: true,
+    authFields: [
+      {
+        name: 'instanceUrl',
+        label: 'Looker Instance URL',
+        type: 'url',
+        placeholder: 'https://your-company.looker.com',
+        required: true,
+      },
+      {
+        name: 'apiKey',
+        label: 'API Key',
+        type: 'password',
+        placeholder: 'Your Looker API key',
+        required: true,
+      },
+    ],
+  },
+  {
+    id: 'salesforce',
+    name: 'Salesforce',
+    description: 'Access customer data, leads, opportunities, and CRM information',
+    icon: 'https://cdn.worldvectorlogo.com/logos/salesforce-2.svg',
+    category: 'CRM',
+    requiresAuth: true,
+    authFields: [
+      {
+        name: 'instanceUrl',
+        label: 'Salesforce Instance URL',
+        type: 'url',
+        placeholder: 'https://yourcompany.salesforce.com',
+        required: true,
+      },
+      {
+        name: 'accessToken',
+        label: 'Access Token',
+        type: 'password',
+        placeholder: 'Your Salesforce access token',
+        required: true,
+      },
+    ],
+  },
+  {
+    id: 'stripe',
+    name: 'Stripe',
+    description: 'Access payment information, customer billing, and subscription data',
+    icon: 'https://cdn.worldvectorlogo.com/logos/stripe-4.svg',
+    category: 'Payments',
+    requiresAuth: true,
+    authFields: [
+      {
+        name: 'apiKey',
+        label: 'API Key',
+        type: 'password',
+        placeholder: 'sk_live_...',
+        required: true,
+      },
+    ],
+  },
+  {
+    id: 'database',
+    name: 'Database',
+    description: 'Query your database with natural language. Supports PostgreSQL, MySQL, SQLite',
+    icon: 'https://api.iconify.design/lucide/database.svg?color=%23888888',
+    category: 'Data',
+    requiresAuth: true,
+    authFields: [
+      {
+        name: 'connectionString',
+        label: 'Connection String',
+        type: 'password',
+        placeholder: 'postgresql://user:pass@host:5432/db',
+        required: true,
+      },
+    ],
+  },
+  {
+    id: 'gmail',
+    name: 'Gmail',
+    description: 'Send and read emails, manage inbox, search messages',
+    icon: 'https://cdn.worldvectorlogo.com/logos/gmail-icon.svg',
+    category: 'Communication',
+    requiresAuth: true,
+    authFields: [
+      {
+        name: 'clientId',
+        label: 'OAuth Client ID',
+        type: 'text',
+        placeholder: 'Your Google OAuth client ID',
+        required: true,
+      },
+      {
+        name: 'clientSecret',
+        label: 'OAuth Client Secret',
+        type: 'password',
+        placeholder: 'Your Google OAuth client secret',
+        required: true,
+      },
+    ],
+  },
+  {
+    id: 'calendar',
+    name: 'Google Calendar',
+    description: 'Check availability, schedule meetings, manage calendar events',
+    icon: 'https://ssl.gstatic.com/calendar/images/dynamiclogo_2020q4/calendar_31_2x.png',
+    category: 'Productivity',
+    requiresAuth: true,
+    authFields: [
+      {
+        name: 'clientId',
+        label: 'OAuth Client ID',
+        type: 'text',
+        placeholder: 'Your Google OAuth client ID',
+        required: true,
+      },
+      {
+        name: 'clientSecret',
+        label: 'OAuth Client Secret',
+        type: 'password',
+        placeholder: 'Your Google OAuth client secret',
+        required: true,
+      },
+    ],
+  },
+]
+
+export const PLATFORM_TOOLS: Record<string, Tool[]> = {
+  looker: [
+    {
+      id: 'looker-query-dashboard',
+      name: 'Query Dashboard',
+      description: 'Retrieve data from a specific Looker dashboard',
+      sourceId: 'looker',
+    },
+    {
+      id: 'looker-get-metrics',
+      name: 'Get Metrics',
+      description: 'Fetch specific metrics and KPIs',
+      sourceId: 'looker',
+    },
+    {
+      id: 'looker-list-reports',
+      name: 'List Reports',
+      description: 'Get a list of available reports',
+      sourceId: 'looker',
+    },
+    {
+      id: 'looker-export-data',
+      name: 'Export Data',
+      description: 'Export dashboard data in various formats',
+      sourceId: 'looker',
+    },
+  ],
+  salesforce: [
+    {
+      id: 'sf-get-account',
+      name: 'Get Account',
+      description: 'Retrieve account information by ID',
+      sourceId: 'salesforce',
+    },
+    {
+      id: 'sf-search-leads',
+      name: 'Search Leads',
+      description: 'Search for leads matching criteria',
+      sourceId: 'salesforce',
+    },
+    {
+      id: 'sf-get-opportunities',
+      name: 'Get Opportunities',
+      description: 'Retrieve sales opportunities',
+      sourceId: 'salesforce',
+    },
+    {
+      id: 'sf-create-case',
+      name: 'Create Case',
+      description: 'Create a new support case',
+      sourceId: 'salesforce',
+    },
+  ],
+  stripe: [
+    {
+      id: 'stripe-get-customer',
+      name: 'Get Customer',
+      description: 'Retrieve customer information',
+      sourceId: 'stripe',
+    },
+    {
+      id: 'stripe-list-payments',
+      name: 'List Payments',
+      description: 'Get payment history for a customer',
+      sourceId: 'stripe',
+    },
+    {
+      id: 'stripe-get-subscription',
+      name: 'Get Subscription',
+      description: 'Retrieve subscription details',
+      sourceId: 'stripe',
+    },
+  ],
+  database: [
+    {
+      id: 'db-query',
+      name: 'Query Database',
+      description: 'Execute a natural language query',
+      sourceId: 'database',
+    },
+    {
+      id: 'db-list-tables',
+      name: 'List Tables',
+      description: 'Get available database tables',
+      sourceId: 'database',
+    },
+  ],
+  gmail: [
+    {
+      id: 'gmail-send',
+      name: 'Send Email',
+      description: 'Send an email message',
+      sourceId: 'gmail',
+    },
+    {
+      id: 'gmail-search',
+      name: 'Search Messages',
+      description: 'Search for emails',
+      sourceId: 'gmail',
+    },
+  ],
+  calendar: [
+    {
+      id: 'cal-check-availability',
+      name: 'Check Availability',
+      description: 'Check calendar availability',
+      sourceId: 'calendar',
+    },
+    {
+      id: 'cal-create-event',
+      name: 'Create Event',
+      description: 'Schedule a new calendar event',
+      sourceId: 'calendar',
+    },
+  ],
+}
