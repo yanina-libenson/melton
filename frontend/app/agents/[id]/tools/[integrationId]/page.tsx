@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { mockAgents } from '@/lib/mock-data'
 import { toast } from 'sonner'
+import Image from 'next/image'
 
 export default function EditIntegrationPage({
   params,
@@ -66,7 +67,7 @@ export default function EditIntegrationPage({
         {/* Header */}
         <div className="mb-12">
           <div className="flex items-start gap-4">
-            <img
+            <Image
               src={
                 integration.icon ||
                 (integration.type === 'custom-tool'
@@ -74,6 +75,8 @@ export default function EditIntegrationPage({
                   : '')
               }
               alt={integration.name}
+              width={48}
+              height={48}
               className="h-12 w-12 object-contain"
             />
             <div>

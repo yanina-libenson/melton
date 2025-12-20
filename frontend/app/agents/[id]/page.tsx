@@ -10,6 +10,7 @@ import { mockAgents } from '@/lib/mock-data'
 import { Agent } from '@/lib/types'
 import { toast } from 'sonner'
 import Link from 'next/link'
+import Image from 'next/image'
 
 export default function AgentPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params)
@@ -128,7 +129,7 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
                   <div className="border-border bg-card shadow-soft-xs hover:shadow-soft-sm cursor-pointer rounded-xl border px-5 py-4 transition-all duration-200 ease-out hover:-translate-y-0.5">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <img
+                        <Image
                           src={
                             integration.icon ||
                             (integration.type === 'custom-tool'
@@ -136,6 +137,8 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
                               : '')
                           }
                           alt={integration.name}
+                          width={integration.icon ? 32 : 24}
+                          height={integration.icon ? 32 : 24}
                           className={
                             integration.icon ? 'h-8 w-8 object-contain' : 'h-6 w-6 object-contain'
                           }

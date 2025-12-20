@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
+import Image from 'next/image'
 
 interface ProviderToken {
   id: string
@@ -86,9 +87,11 @@ export default function SettingsPage() {
                 className="border-border bg-card shadow-soft-xs rounded-xl border p-6"
               >
                 <div className="flex items-start gap-4">
-                  <img
+                  <Image
                     src={provider.logo}
                     alt={provider.name}
+                    width={40}
+                    height={40}
                     className="h-10 w-10 rounded-lg object-contain"
                   />
                   <div className="flex-1">

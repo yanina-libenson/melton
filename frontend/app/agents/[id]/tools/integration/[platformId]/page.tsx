@@ -17,6 +17,7 @@ import { PLATFORM_INTEGRATIONS, PLATFORM_TOOLS } from '@/lib/platforms'
 import { Tool, AuthenticationType, HttpMethod, CustomToolType } from '@/lib/types'
 import { toast } from 'sonner'
 import { mockAgents } from '@/lib/mock-data'
+import Image from 'next/image'
 
 export default function IntegrationConfigPage({
   params,
@@ -423,7 +424,13 @@ export default function IntegrationConfigPage({
         {/* Header */}
         <div className="mb-12">
           <div className="flex items-center gap-4">
-            <img src={platform.icon} alt={platform.name} className="h-12 w-12 object-contain" />
+            <Image
+              src={platform.icon}
+              alt={platform.name}
+              width={48}
+              height={48}
+              className="h-12 w-12 object-contain"
+            />
             <div>
               <h1 className="text-foreground text-3xl font-semibold tracking-tight">
                 {platform.name}
