@@ -55,15 +55,32 @@ export default function EditIntegrationPage({
   return (
     <div className="bg-background min-h-screen">
       <div className="mx-auto max-w-3xl px-8 py-16">
+        {/* Back Button */}
+        <Link
+          href={`/agents/${resolvedParams.id}`}
+          className="text-muted-foreground hover:text-foreground mb-8 inline-flex items-center gap-1 transition-colors"
+        >
+          <span>←</span>
+        </Link>
+
         {/* Header */}
         <div className="mb-12">
-          <div className="flex items-center gap-4">
-            {integration.icon && <span className="text-4xl">{integration.icon}</span>}
+          <div className="flex items-start gap-4">
+            <img
+              src={
+                integration.icon ||
+                (integration.type === 'custom-tool'
+                  ? 'https://api.iconify.design/lucide/wrench.svg?color=%23888888'
+                  : '')
+              }
+              alt={integration.name}
+              className="h-12 w-12 object-contain"
+            />
             <div>
-              <h1 className="text-foreground text-3xl font-semibold tracking-tight">
+              <h1 className="text-foreground mb-1 text-3xl font-semibold tracking-tight">
                 {integration.name}
               </h1>
-              <p className="text-muted-foreground mt-1 text-sm">{integration.description}</p>
+              <p className="text-muted-foreground text-sm">{integration.description}</p>
             </div>
           </div>
         </div>
@@ -106,16 +123,21 @@ export default function EditIntegrationPage({
         </div>
 
         {/* Actions */}
-        <div className="border-border flex items-center justify-between border-t pt-8">
-          <button
-            onClick={handleRemove}
-            className="text-muted-foreground hover:text-destructive text-sm transition-colors"
-          >
-            Remove
-          </button>
-          <div className="flex items-center gap-3">
-            <Link href={`/agents/${resolvedParams.id}`}>
-              <Button variant="ghost">Back</Button>
+        <div className="border-border border-t pt-8">
+          <div className="mb-6 flex items-center justify-between">
+            <button
+              onClick={handleRemove}
+              className="text-muted-foreground hover:text-destructive text-sm transition-colors"
+            >
+              Remove
+            </button>
+          </div>
+          <div className="flex items-center justify-between">
+            <Link
+              href={`/agents/${resolvedParams.id}`}
+              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
+            >
+              <span>←</span>
             </Link>
             <Button onClick={handleSave} size="lg">
               Save

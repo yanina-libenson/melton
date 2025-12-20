@@ -61,9 +61,16 @@ export default function AgentsPage() {
                   <div className="border-border/50 bg-card shadow-soft-xs hover:shadow-soft-md hover:border-border cursor-pointer rounded-xl border px-6 py-6 transition-all duration-200 ease-out hover:-translate-y-0.5">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h2 className="text-foreground group-hover:text-primary text-base font-medium transition-colors">
-                          {agent.name}
-                        </h2>
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-foreground group-hover:text-primary text-base font-medium transition-colors">
+                            {agent.name}
+                          </h2>
+                          {agent.status === 'active' && (
+                            <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600">
+                              Active
+                            </span>
+                          )}
+                        </div>
                         <div className="mt-2 flex items-center gap-3">
                           <p className="text-muted-foreground text-xs">
                             {totalTools} {totalTools === 1 ? 'tool' : 'tools'}

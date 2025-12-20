@@ -128,13 +128,18 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
                   <div className="border-border bg-card shadow-soft-xs hover:shadow-soft-sm cursor-pointer rounded-xl border px-5 py-4 transition-all duration-200 ease-out hover:-translate-y-0.5">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        {integration.icon && (
-                          <img
-                            src={integration.icon}
-                            alt={integration.name}
-                            className="h-8 w-8 object-contain"
-                          />
-                        )}
+                        <img
+                          src={
+                            integration.icon ||
+                            (integration.type === 'custom-tool'
+                              ? 'https://api.iconify.design/lucide/wrench.svg?color=%23888888'
+                              : '')
+                          }
+                          alt={integration.name}
+                          className={
+                            integration.icon ? 'h-8 w-8 object-contain' : 'h-6 w-6 object-contain'
+                          }
+                        />
                         <div>
                           <h3 className="text-foreground text-sm font-medium">
                             {integration.name}
