@@ -64,13 +64,6 @@
     "googleDescription": "Gemini y otros modelos de Google",
     "successSaved": "Configuración guardada"
   },
-  "conversations": {
-    "title": "Conversaciones",
-    "subtitle": "Interacciones con clientes",
-    "noMessages": "Sin mensajes",
-    "selectConversation": "Seleccioná una conversación",
-    "usedTool": "Usó {toolName}"
-  },
   "test": {
     "title": "Probá {agentName}",
     "subtitle": "Probá tu agente antes de desplegarlo",
@@ -111,6 +104,8 @@
     "newAgent": "Nuevo Agente",
     "createSubtitle": "Creá tu agente de IA",
     "configureSubtitle": "Configurá tu agente",
+    "tabConfigure": "Configurar",
+    "tabTest": "Probar",
     "agentNameLabel": "Nombre del Agente",
     "agentNamePlaceholder": "Soporte al Cliente",
     "instructionsLabel": "Instrucciones",

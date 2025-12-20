@@ -95,13 +95,6 @@ export interface AuthField {
   required: boolean
 }
 
-export interface Conversation {
-  id: string
-  agentId: string
-  messages: Message[]
-  createdAt: string
-}
-
 export interface Message {
   id: string
   role: 'user' | 'agent' | 'system'

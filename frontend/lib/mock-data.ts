@@ -1,4 +1,4 @@
-import { Agent, IntegrationSource, Conversation } from './types'
+import { Agent, IntegrationSource } from './types'
 import { PLATFORM_TOOLS } from './platforms'
 
 const lookerIntegration: IntegrationSource = {
@@ -87,43 +87,5 @@ export const mockAgents: Agent[] = [
     createdAt: '2024-12-19T12:00:00Z',
     updatedAt: '2024-12-19T12:00:00Z',
     integrations: [],
-  },
-]
-
-export const mockConversations: Conversation[] = [
-  {
-    id: 'conv-1',
-    agentId: 'agent-1',
-    createdAt: '2024-12-19T15:30:00Z',
-    messages: [
-      {
-        id: 'msg-1',
-        role: 'user',
-        content: 'Where is my order #12345?',
-        timestamp: '2024-12-19T15:30:00Z',
-      },
-      {
-        id: 'msg-2',
-        role: 'agent',
-        content: 'Let me check that for you...',
-        toolCalls: [
-          {
-            toolId: 'tool-1',
-            toolName: 'Get Order Status',
-            input: { orderId: '12345' },
-            output: { status: 'in_transit', estimatedDelivery: '2024-12-21' },
-            success: true,
-          },
-        ],
-        timestamp: '2024-12-19T15:30:05Z',
-      },
-      {
-        id: 'msg-3',
-        role: 'agent',
-        content:
-          'Your order #12345 is currently in transit and should arrive by December 21st, 2024.',
-        timestamp: '2024-12-19T15:30:06Z',
-      },
-    ],
   },
 ]
