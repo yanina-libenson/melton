@@ -64,9 +64,13 @@ async def health() -> dict[str, str]:
 
 
 # API routers
-from app.api.v1 import agents, playground, user_settings
+from app.api.v1 import agents, integrations, playground, tools, user_settings
 
 app.include_router(agents.router, prefix=f"{settings.api_v1_prefix}/agents", tags=["agents"])
+app.include_router(
+    integrations.router, prefix=f"{settings.api_v1_prefix}/integrations", tags=["integrations"]
+)
+app.include_router(tools.router, prefix=f"{settings.api_v1_prefix}/tools", tags=["tools"])
 app.include_router(
     playground.router, prefix=f"{settings.api_v1_prefix}/playground", tags=["playground"]
 )

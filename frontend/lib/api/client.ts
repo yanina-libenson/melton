@@ -116,30 +116,84 @@ class APIClient {
     })
   }
 
-  // Integration endpoints (to be implemented)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async getIntegrations(_agentId: string): Promise<IntegrationSource[]> {
-    // TODO: Implement when backend endpoint is ready
-    return []
+  // Integration endpoints
+  async getIntegrations(agentId: string): Promise<IntegrationSource[]> {
+    return this.request(`${API_VERSION}/agents/${agentId}/integrations`)
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async createIntegration(_data: {
+  async createIntegration(data: {
     agent_id: string
     type: 'platform' | 'custom-tool' | 'sub-agent'
     name: string
     description?: string
     config: Record<string, unknown>
   }): Promise<IntegrationSource> {
-    // TODO: Implement when backend endpoint is ready
-    throw new Error('Not implemented')
+    return this.request(`${API_VERSION}/integrations`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
   }
 
-  // Tool endpoints (to be implemented)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async getTools(_integrationId: string): Promise<Tool[]> {
-    // TODO: Implement when backend endpoint is ready
-    return []
+  async updateIntegration(
+    integrationId: string,
+    data: Partial<{
+      name: string
+      description: string
+      config: Record<string, unknown>
+    }>
+  ): Promise<IntegrationSource> {
+    return this.request(`${API_VERSION}/integrations/${integrationId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteIntegration(integrationId: string): Promise<void> {
+    return this.request(`${API_VERSION}/integrations/${integrationId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  // Tool endpoints
+  async getTools(integrationId: string): Promise<Tool[]> {
+    return this.request(`${API_VERSION}/integrations/${integrationId}/tools`)
+  }
+
+  async createTool(data: {
+    integration_id: string
+    name: string
+    description?: string
+    tool_type?: 'api' | 'llm' | 'sub-agent'
+    tool_schema?: Record<string, unknown>
+    config?: Record<string, unknown>
+    is_enabled?: boolean
+  }): Promise<Tool> {
+    return this.request(`${API_VERSION}/tools`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateTool(
+    toolId: string,
+    data: Partial<{
+      name: string
+      description: string
+      tool_schema: Record<string, unknown>
+      config: Record<string, unknown>
+      is_enabled: boolean
+    }>
+  ): Promise<Tool> {
+    return this.request(`${API_VERSION}/tools/${toolId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteTool(toolId: string): Promise<void> {
+    return this.request(`${API_VERSION}/tools/${toolId}`, {
+      method: 'DELETE',
+    })
   }
 
   // User API Keys endpoints

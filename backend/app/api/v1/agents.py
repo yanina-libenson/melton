@@ -1,11 +1,16 @@
 """Agent API endpoints."""
 
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database import get_database_session
 from app.dependencies import AgentServiceDep, CurrentUser
 from app.schemas.agent import AgentCreate, AgentResponse, AgentUpdate
+from app.schemas.integration import IntegrationResponse
+from app.services.integration_service import IntegrationService
 
 router = APIRouter()
 
@@ -81,3 +86,15 @@ async def delete_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent with ID {agent_id} not found",
         )
+
+
+@router.get("/{agent_id}/integrations", response_model=list[IntegrationResponse])
+async def list_agent_integrations(
+    agent_id: uuid.UUID,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_database_session)],
+) -> list[IntegrationResponse]:
+    """List all integrations for an agent."""
+    service = IntegrationService(session)
+    integrations = await service.get_agent_integrations(agent_id)
+    return [IntegrationResponse.model_validate(integration) for integration in integrations]
