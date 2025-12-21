@@ -29,7 +29,10 @@
     "noAgentsYet": "No agents yet",
     "createFirstAgent": "Create Your First Agent",
     "toolCount": "{count, plural, =0 {No tools} =1 {1 tool} other {# tools}}",
-    "active": "Active"
+    "active": "Active",
+    "loading": "Loading agents...",
+    "errorLoading": "Failed to load agents",
+    "retry": "Retry"
   },
   "auth": {
     "title": "Welcome to Dr. Melton",

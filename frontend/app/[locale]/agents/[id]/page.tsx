@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { mockAgents } from '@/lib/mock-data'
+import { useAgent, useAgentMutations } from '@/lib/hooks/useAgents'
+import { usePlayground } from '@/lib/hooks/usePlayground'
 import { Agent, Message } from '@/lib/types'
 import { toast } from 'sonner'
 import Link from 'next/link'
@@ -21,10 +22,27 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
   const router = useRouter()
   const isNewAgent = resolvedParams.id === 'new'
 
+  // Fetch agent data from API (skip if new agent)
+  const {
+    agent: fetchedAgent,
+    isLoading,
+    isError,
+    mutate,
+  } = useAgent(isNewAgent ? null : resolvedParams.id)
+
+  const { createAgent, updateAgent } = useAgentMutations()
+
   const [activeTab, setActiveTab] = useState<'configure' | 'test'>('configure')
-  const [agent, setAgent] = useState<Agent>(() => {
+
+  // Local state for editing
+  const [agent, setAgent] = useState<Agent | null>(null)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+
+  // Initialize agent state when data is fetched or for new agent
+  useEffect(() => {
     if (isNewAgent) {
-      return {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAgent({
         id: 'new',
         name: '',
         instructions: `You are a helpful assistant. Your role is to:\n\n- Assist customers with their questions\n- Be polite and professional\n- Provide accurate information`,
@@ -32,24 +50,28 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         integrations: [],
-      }
+      })
+      setHasUnsavedChanges(true) // New agents always have unsaved changes
+    } else if (fetchedAgent) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAgent(fetchedAgent)
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setHasUnsavedChanges(false)
     }
-    const foundAgent = mockAgents.find((a) => a.id === resolvedParams.id)
-    if (foundAgent) return foundAgent
+  }, [isNewAgent, fetchedAgent])
 
-    // Fallback to first agent or create default
-    return (
-      mockAgents[0] || {
-        id: resolvedParams.id,
-        name: '',
-        instructions: '',
-        status: 'draft',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        integrations: [],
-      }
-    )
-  })
+  // Detect changes to agent
+  useEffect(() => {
+    if (!agent || !fetchedAgent || isNewAgent) return
+
+    const hasChanges =
+      agent.name !== fetchedAgent.name ||
+      agent.instructions !== fetchedAgent.instructions ||
+      agent.status !== fetchedAgent.status
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHasUnsavedChanges(hasChanges)
+  }, [agent, fetchedAgent, isNewAgent])
 
   // Test/Playground state
   const [messages, setMessages] = useState<Message[]>([
@@ -61,8 +83,28 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
     },
   ])
   const [inputMessage, setInputMessage] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // WebSocket playground connection (only when on test tab and not new agent)
+  const playground = usePlayground({
+    agentId: !isNewAgent ? resolvedParams.id : '',
+    enabled: !isNewAgent && activeTab === 'test',
+    onMessage: (message) => {
+      setMessages((prev) => [...prev, message])
+    },
+    onError: (error, settingsUrl) => {
+      if (settingsUrl) {
+        toast.error(error, {
+          action: {
+            label: 'Go to Settings',
+            onClick: () => router.push('/settings'),
+          },
+        })
+      } else {
+        toast.error(error)
+      }
+    },
+  })
 
   function scrollToBottom() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -70,10 +112,10 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages])
+  }, [messages, playground.currentResponse])
 
-  function handleSaveAgent() {
-    if (!agent.name.trim()) {
+  async function handleSaveAgent() {
+    if (!agent || !agent.name.trim()) {
       toast.error(t('errorNameRequired'))
       return
     }
@@ -83,58 +125,47 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
       return
     }
 
-    toast.success(isNewAgent ? t('successCreated') : t('successSaved'))
-
     if (isNewAgent) {
-      router.push('/agents')
+      const result = await createAgent({
+        name: agent.name,
+        instructions: agent.instructions,
+        status: agent.status,
+        model_config: {
+          provider: 'anthropic',
+          model: 'claude-sonnet-4-5-20250929',
+          temperature: 0.7,
+          max_tokens: 4096,
+        },
+      })
+
+      if (result.success) {
+        toast.success(t('successCreated'))
+        router.push('/agents')
+      } else {
+        toast.error(result.error || 'Failed to create agent')
+      }
+    } else {
+      const result = await updateAgent(agent.id, {
+        name: agent.name,
+        instructions: agent.instructions,
+        status: agent.status,
+      })
+
+      if (result.success) {
+        toast.success(t('successSaved'))
+        mutate() // Revalidate agent data
+        setHasUnsavedChanges(false)
+      } else {
+        toast.error(result.error || 'Failed to update agent')
+      }
     }
   }
 
-  async function handleSendMessage() {
-    if (!inputMessage.trim() || isLoading) return
+  function handleSendMessage() {
+    if (!inputMessage.trim() || playground.isStreaming || isNewAgent) return
 
-    const userMessage: Message = {
-      id: `msg-${Date.now()}`,
-      role: 'user',
-      content: inputMessage,
-      timestamp: new Date().toISOString(),
-    }
-
-    setMessages((prev) => [...prev, userMessage])
+    playground.sendMessage(inputMessage)
     setInputMessage('')
-    setIsLoading(true)
-
-    setTimeout(() => {
-      const agentResponse: Message = {
-        id: `msg-${Date.now()}-response`,
-        role: 'agent',
-        content: tTest('mockResponse', { agentName: agent?.name || 'Agent' }),
-        timestamp: new Date().toISOString(),
-      }
-
-      const allEnabledTools =
-        agent?.integrations.flatMap((integration) =>
-          integration.availableTools.filter((tool) => integration.enabledToolIds.includes(tool.id))
-        ) || []
-
-      if (allEnabledTools.length > 0 && Math.random() > 0.5) {
-        const randomTool = allEnabledTools[0]
-        if (randomTool) {
-          agentResponse.toolCalls = [
-            {
-              toolId: randomTool.id,
-              toolName: randomTool.name,
-              input: { example: 'parameter' },
-              output: { status: 'success', data: 'Mock API response' },
-              success: true,
-            },
-          ]
-        }
-      }
-
-      setMessages((prev) => [...prev, agentResponse])
-      setIsLoading(false)
-    }, 1000)
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -142,6 +173,38 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
       e.preventDefault()
       handleSendMessage()
     }
+  }
+
+  // Loading state
+  if (!isNewAgent && isLoading) {
+    return (
+      <div className="bg-background min-h-screen">
+        <div className="mx-auto max-w-3xl px-8 py-16">
+          <div className="py-32 text-center">
+            <p className="text-muted-foreground text-sm">Loading agent...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (!isNewAgent && isError) {
+    return (
+      <div className="bg-background min-h-screen">
+        <div className="mx-auto max-w-3xl px-8 py-16">
+          <div className="py-32 text-center">
+            <p className="mb-4 text-sm text-red-500">Error loading agent</p>
+            <Button onClick={() => router.push('/agents')}>Back to Agents</Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // No agent data
+  if (!agent) {
+    return null
   }
 
   return (
@@ -175,7 +238,12 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            {t('tabConfigure')}
+            <span className="flex items-center gap-1.5">
+              {t('tabConfigure')}
+              {hasUnsavedChanges && (
+                <span className="text-xs text-yellow-600 dark:text-yellow-500">●</span>
+              )}
+            </span>
           </button>
           <button
             onClick={() => setActiveTab('test')}
@@ -223,7 +291,7 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
                 {t('toolsLabel')}
               </Label>
 
-              {agent.integrations.length === 0 ? (
+              {!agent.integrations || agent.integrations.length === 0 ? (
                 <Link href={`/agents/${resolvedParams.id}/tools/add`} className="group block">
                   <div className="border-border hover:border-primary/50 hover:bg-accent/30 cursor-pointer rounded-xl border-2 border-dashed py-16 text-center transition-all">
                     <p className="text-muted-foreground group-hover:text-foreground text-sm transition-colors">
@@ -318,6 +386,28 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
         {/* Test Tab */}
         {activeTab === 'test' && (
           <div className="flex flex-col">
+            {/* Unsaved Changes Warning */}
+            {hasUnsavedChanges && (
+              <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-yellow-800 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
+                <div className="flex items-start gap-3">
+                  <span className="text-lg">⚠️</span>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">You have unsaved changes</p>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      The playground is testing the last saved version of your agent. Save your
+                      changes on the Configure tab to test them.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('configure')}
+                    className="rounded px-3 py-1 text-xs font-medium transition-colors hover:bg-yellow-100 dark:hover:bg-yellow-900/40"
+                  >
+                    Go to Configure
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Chat Area */}
             <div className="mb-4 h-[380px] overflow-y-auto">
               <div className="space-y-6">
@@ -364,7 +454,16 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
                   </div>
                 ))}
 
-                {isLoading && (
+                {/* Streaming response */}
+                {playground.currentResponse && (
+                  <div className="flex justify-start">
+                    <div className="bg-card text-foreground border-border shadow-soft-xs max-w-[85%] rounded-xl border px-5 py-3">
+                      <p className="text-sm whitespace-pre-wrap">{playground.currentResponse}</p>
+                    </div>
+                  </div>
+                )}
+
+                {playground.isStreaming && !playground.currentResponse && (
                   <div className="flex justify-start">
                     <div className="bg-card border-border shadow-soft-xs rounded-xl border px-5 py-3">
                       <div className="flex items-center gap-1.5">
@@ -393,12 +492,12 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyDown={handleKeyDown}
-                disabled={isLoading}
+                disabled={playground.isStreaming || isNewAgent}
                 className="flex-1"
               />
               <Button
                 onClick={handleSendMessage}
-                disabled={isLoading || !inputMessage.trim()}
+                disabled={playground.isStreaming || !inputMessage.trim() || isNewAgent}
                 className="px-6"
               >
                 {tCommon('send')}

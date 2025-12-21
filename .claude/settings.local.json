@@ -14,7 +14,28 @@
       "Bash(tree:*)",
       "Bash(npm install:*)",
       "Bash(npm run build:*)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(wc:*)",
+      "Bash(grep:*)",
+      "Bash(poetry run python:*)",
+      "Bash(poetry install:*)",
+      "Bash(docker info:*)",
+      "Bash(./start.sh)",
+      "Bash(docker-compose ps:*)",
+      "Bash(poetry run alembic:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker logs:*)",
+      "Bash(psql:*)",
+      "Bash(PGPASSWORD=melton_dev_password psql:*)",
+      "Bash(poetry run uvicorn:*)",
+      "Bash(curl:*)",
+      "Bash(jq:*)",
+      "Bash(poetry show:*)",
+      "Bash(poetry update:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

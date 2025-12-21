@@ -1,14 +1,12 @@
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
-import { mockAgents } from '@/lib/mock-data'
-import { Agent } from '@/lib/types'
+import { useAgents } from '@/lib/hooks/useAgents'
 
 export default function AgentsPage() {
-  const [agents] = useState<Agent[]>(mockAgents)
+  const { agents, isLoading, isError } = useAgents()
   const t = useTranslations('agents')
   const tDates = useTranslations('dates')
 
@@ -36,7 +34,9 @@ export default function AgentsPage() {
             <h1 className="text-foreground mb-2 text-4xl font-semibold tracking-tight">
               {t('title')}
             </h1>
-            <p className="text-muted-foreground text-sm">{t('count', { count: agents.length })}</p>
+            <p className="text-muted-foreground text-sm">
+              {t('count', { count: agents?.length || 0 })}
+            </p>
           </div>
           <Link href="/agents/new">
             <Button size="lg">{t('newAgent')}</Button>
@@ -44,7 +44,18 @@ export default function AgentsPage() {
         </div>
 
         {/* Agents List */}
-        {agents.length === 0 ? (
+        {isLoading ? (
+          <div className="py-32 text-center">
+            <p className="text-muted-foreground text-sm">{t('loading') || 'Loading...'}</p>
+          </div>
+        ) : isError ? (
+          <div className="py-32 text-center">
+            <p className="mb-4 text-sm text-red-500">
+              {t('errorLoading') || 'Error loading agents'}
+            </p>
+            <Button onClick={() => window.location.reload()}>{t('retry') || 'Retry'}</Button>
+          </div>
+        ) : !agents || agents.length === 0 ? (
           <div className="py-32 text-center">
             <p className="mb-8 text-lg font-light text-gray-400">{t('noAgentsYet')}</p>
             <Link href="/agents/new">
@@ -54,10 +65,11 @@ export default function AgentsPage() {
         ) : (
           <div className="space-y-1">
             {agents.map((agent) => {
-              const totalTools = agent.integrations.reduce(
-                (sum, integration) => sum + integration.enabledToolIds.length,
-                0
-              )
+              const totalTools =
+                agent.integrations?.reduce(
+                  (sum, integration) => sum + integration.enabledToolIds.length,
+                  0
+                ) || 0
 
               return (
                 <Link key={agent.id} href={`/agents/${agent.id}`} className="group block">
