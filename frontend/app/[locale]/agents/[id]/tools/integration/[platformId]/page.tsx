@@ -19,6 +19,7 @@ import { toast } from 'sonner'
 import { mockAgents } from '@/lib/mock-data'
 import Image from 'next/image'
 import { useTranslations } from 'next-intl'
+import { apiClient } from '@/lib/api/client'
 
 export default function IntegrationConfigPage({
   params,
@@ -379,14 +380,98 @@ export default function IntegrationConfigPage({
     setStep('tools')
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (enabledToolIds.length === 0) {
       toast.error(t('errorAtLeastOneTool'))
       return
     }
 
-    toast.success(t('successToolAdded', { name: toolName || platform?.name || 'Tool' }))
-    router.push(`/agents/${resolvedParams.id}`)
+    try {
+      // Create integration
+      const integrationConfig: Record<string, unknown> = {
+        authentication: authType,
+        ...authData,
+      }
+
+      if (baseUrl) {
+        integrationConfig.baseUrl = baseUrl
+      }
+
+      const integrationData: {
+        agent_id: string
+        type: 'platform' | 'custom-tool' | 'sub-agent'
+        name: string
+        description?: string
+        config: Record<string, unknown>
+        platform_id?: string
+      } = {
+        agent_id: resolvedParams.id,
+        type: isSubAgent ? 'sub-agent' : isCustomTool ? 'custom-tool' : 'platform',
+        name: toolName || platform?.name || 'Integration',
+        description: toolDescription,
+        config: integrationConfig,
+      }
+
+      if (!isCustomTool) {
+        integrationData.platform_id = resolvedParams.platformId
+      }
+
+      const integration = await apiClient.createIntegration(integrationData)
+
+      // Create tools for the integration
+      const enabledTools = tools.filter((t) => enabledToolIds.includes(t.id))
+      for (const tool of enabledTools) {
+        const toolConfig = toolConfigs[tool.id] || {
+          llmEnabled: false,
+          llmModel: '',
+          llmInstructions: '',
+        }
+        const toolSchema = toolSchemas[tool.id] || { inputFields: [], outputFields: [] }
+
+        await apiClient.createTool({
+          integration_id: integration.id,
+          name: tool.name,
+          description: tool.description || '',
+          tool_type: customToolType || 'api',
+          tool_schema: {
+            name: tool.name.toLowerCase().replace(/\s+/g, '_'),
+            description: tool.description || tool.name,
+            input_schema: {
+              type: 'object',
+              properties: Object.fromEntries(
+                toolSchema.inputFields.map((field) => [
+                  field.name,
+                  {
+                    type:
+                      field.type === 'number'
+                        ? 'number'
+                        : field.type === 'boolean'
+                          ? 'boolean'
+                          : 'string',
+                    description: field.description,
+                  },
+                ])
+              ),
+              required: toolSchema.inputFields.filter((f) => f.required).map((f) => f.name),
+            },
+          },
+          config: {
+            endpoint: tool.endpoint,
+            method: tool.method,
+            llm_enabled: toolConfig.llmEnabled || false,
+            llm_model: toolConfig.llmModel,
+            llm_instructions: toolConfig.llmInstructions,
+          },
+          is_enabled: true,
+        })
+      }
+
+      toast.success(t('successToolAdded', { name: toolName || platform?.name || 'Tool' }))
+      router.push(`/agents/${resolvedParams.id}`)
+    } catch (error) {
+      console.error('Failed to create integration:', error)
+      toast.error('Failed to create integration. Please try again.')
+    }
   }
 
   return (
