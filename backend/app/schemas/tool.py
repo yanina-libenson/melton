@@ -67,14 +67,14 @@ class ToolResponse(BaseModel):
     """Schema for tool response."""
 
     id: UUID
-    integration_id: UUID
+    integration_id: UUID = Field(..., serialization_alias="sourceId")
     name: str
     description: str | None
-    tool_type: Literal["api", "llm", "sub-agent"] | None
-    tool_schema: dict
+    tool_type: Literal["api", "llm", "sub-agent"] | None = Field(None, serialization_alias="toolType")
+    tool_schema: dict = Field(..., serialization_alias="toolSchema")
     config: dict
-    is_enabled: bool
-    created_at: datetime
-    updated_at: datetime
+    is_enabled: bool = Field(..., serialization_alias="isEnabled")
+    created_at: datetime = Field(..., serialization_alias="createdAt")
+    updated_at: datetime = Field(..., serialization_alias="updatedAt")
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}

@@ -21,36 +21,37 @@ class ToolRegistry:
             cls._instance._tools = {}
         return cls._instance
 
-    def register(self, tool: BaseTool) -> None:
+    def register(self, tool_name: str, tool: BaseTool) -> None:
         """
         Register a tool instance.
 
         Args:
+            tool_name: Tool name (from schema) used as registry key
             tool: Tool instance to register
         """
-        self._tools[tool.tool_id] = tool
+        self._tools[tool_name] = tool
 
-    def unregister(self, tool_id: str) -> None:
+    def unregister(self, tool_name: str) -> None:
         """
         Unregister a tool.
 
         Args:
-            tool_id: Tool ID to unregister
+            tool_name: Tool name to unregister
         """
-        if tool_id in self._tools:
-            del self._tools[tool_id]
+        if tool_name in self._tools:
+            del self._tools[tool_name]
 
-    def get(self, tool_id: str) -> BaseTool | None:
+    def get(self, tool_name: str) -> BaseTool | None:
         """
-        Get a tool by ID.
+        Get a tool by name.
 
         Args:
-            tool_id: Tool ID
+            tool_name: Tool name (from schema)
 
         Returns:
             Tool instance or None if not found
         """
-        return self._tools.get(tool_id)
+        return self._tools.get(tool_name)
 
     def get_schemas_for_agent(self, agent_id: str, tool_ids: list[str]) -> list[dict[str, Any]]:
         """

@@ -14,11 +14,13 @@ class StreamEvent:
         delta: str | None = None,
         tool_name: str | None = None,
         tool_input: dict[str, Any] | None = None,
+        tool_use_id: str | None = None,
     ):
         self.type = event_type
         self.delta = delta
         self.tool_name = tool_name
         self.tool_input = tool_input
+        self.tool_use_id = tool_use_id
 
 
 class BaseLLMProvider(ABC):

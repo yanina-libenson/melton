@@ -35,7 +35,8 @@
       "Bash(poetry show:*)",
       "Bash(poetry update:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(docker ps:*)"
     ]
   }
 }

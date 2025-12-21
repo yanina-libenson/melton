@@ -53,15 +53,15 @@ class AgentResponse(BaseModel):
     """Schema for agent response."""
 
     id: UUID
-    user_id: UUID
-    organization_id: UUID
+    user_id: UUID = Field(..., serialization_alias="userId")
+    organization_id: UUID = Field(..., serialization_alias="organizationId")
     name: str
     instructions: str
     status: Literal["active", "inactive", "draft"]
     llm_config: dict = Field(..., alias="model_config")
-    created_at: datetime
-    updated_at: datetime
-    integrations: list["IntegrationResponse"] = []
+    created_at: datetime = Field(..., serialization_alias="createdAt")
+    updated_at: datetime = Field(..., serialization_alias="updatedAt")
+    integrations: list["IntegrationResponse"] = Field(default=[])
 
     model_config = {"from_attributes": True, "populate_by_name": True}
 

@@ -66,6 +66,7 @@ class AnthropicProvider(BaseLLMProvider):
                             event_type="tool_use_start",
                             tool_name=event.content_block.name,
                             tool_input=event.content_block.input,
+                            tool_use_id=event.content_block.id,
                         )
 
     async def generate_without_tools(

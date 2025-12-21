@@ -12,9 +12,18 @@ export type CustomToolType = 'api' | 'llm'
 
 export interface Agent {
   id: string
+  userId: string
+  organizationId: string
   name: string
   instructions: string
   status: AgentStatus
+  model_config: {
+    provider: 'anthropic' | 'openai' | 'google'
+    model: string
+    temperature: number
+    max_tokens: number
+    top_p?: number | null
+  }
   createdAt: string
   updatedAt: string
   integrations: IntegrationSource[]
@@ -22,24 +31,35 @@ export interface Agent {
 
 export interface IntegrationSource {
   id: string
+  agentId: string
   name: string
   type: IntegrationSourceType
-  description: string
+  description: string | null
   icon?: string
-  platformId?: string
-  config: IntegrationConfig
+  platformId?: string | null
+  config: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
   availableTools: Tool[]
-  enabledToolIds: string[]
 }
 
 export interface Tool {
   id: string
   name: string
-  description: string
+  description?: string | null
   sourceId: string
-  toolType?: CustomToolType | 'sub-agent'
+  toolType?: CustomToolType | 'sub-agent' | null
+  toolSchema?: Record<string, unknown>
+  config?: Record<string, unknown>
+  isEnabled?: boolean
+  createdAt?: string
+  updatedAt?: string
   // LLM configuration (for llm and api-llm types)
-  llmModel?: 'gpt-4' | 'claude-sonnet-4' | 'claude-opus-4'
+  llmModel?:
+    | 'gpt-4o'
+    | 'claude-sonnet-4-5-20250929'
+    | 'claude-opus-4-5-20251101'
+    | 'gemini-2.0-flash-exp'
   llmInstructions?: string
   // Sub-agent configuration
   subAgentId?: string

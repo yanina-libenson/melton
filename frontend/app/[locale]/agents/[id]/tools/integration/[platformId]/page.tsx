@@ -360,7 +360,7 @@ export default function IntegrationConfigPage({
         return
       }
       const config = toolConfigs['llm-default'] || {
-        llmModel: 'claude-sonnet-4',
+        llmModel: 'claude-sonnet-4-5-20250929',
         llmInstructions: '',
       }
       // Create an LLM-only tool
@@ -370,7 +370,11 @@ export default function IntegrationConfigPage({
         description: toolDescription,
         sourceId: 'custom-tool',
         toolType: 'llm',
-        llmModel: config.llmModel as 'gpt-4' | 'claude-sonnet-4' | 'claude-opus-4',
+        llmModel: config.llmModel as
+          | 'gpt-4o'
+          | 'claude-sonnet-4-5-20250929'
+          | 'claude-opus-4-5-20251101'
+          | 'gemini-2.0-flash-exp',
         llmInstructions: config.llmInstructions,
       }
       setTools([tool])
@@ -421,7 +425,9 @@ export default function IntegrationConfigPage({
       // Create tools for the integration
       const enabledTools = tools.filter((t) => enabledToolIds.includes(t.id))
       for (const tool of enabledTools) {
-        const toolConfig = toolConfigs[tool.id] || {
+        // For LLM tools, config is stored under 'llm-default' key
+        const configKey = customToolType === 'llm' ? 'llm-default' : tool.id
+        const toolConfig = toolConfigs[configKey] || {
           llmEnabled: false,
           llmModel: '',
           llmInstructions: '',
@@ -611,7 +617,7 @@ export default function IntegrationConfigPage({
                 {t('modelLabel')}
               </Label>
               <Select
-                value={toolConfigs['llm-default']?.llmModel || 'claude-sonnet-4'}
+                value={toolConfigs['llm-default']?.llmModel || 'claude-sonnet-4-5-20250929'}
                 onValueChange={(value) =>
                   setToolConfigs({
                     ...toolConfigs,
@@ -628,9 +634,10 @@ export default function IntegrationConfigPage({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="claude-sonnet-4">{t('modelClaudeSonnet4')}</SelectItem>
-                  <SelectItem value="claude-opus-4">{t('modelClaudeOpus4')}</SelectItem>
-                  <SelectItem value="gpt-4">{t('modelGpt4')}</SelectItem>
+                  <SelectItem value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</SelectItem>
+                  <SelectItem value="claude-opus-4-5-20251101">Claude Opus 4.5</SelectItem>
+                  <SelectItem value="gpt-4o">GPT-4o</SelectItem>
+                  <SelectItem value="gemini-2.0-flash-exp">Gemini 2.0 Flash</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -647,7 +654,8 @@ export default function IntegrationConfigPage({
                     ...toolConfigs,
                     'llm-default': {
                       ...toolConfigs['llm-default'],
-                      llmModel: toolConfigs['llm-default']?.llmModel || 'claude-sonnet-4',
+                      llmModel:
+                        toolConfigs['llm-default']?.llmModel || 'claude-sonnet-4-5-20250929',
                       llmEnabled: true,
                       llmInstructions: e.target.value,
                     },

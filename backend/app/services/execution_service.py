@@ -67,25 +67,28 @@ class AgentExecutionService:
 
             yield ExecutionEvent("agent_loaded", agent_id=str(agent.id))
 
-            # 2. Get or create conversation (STATEFUL)
+            # 2. Register agent tools
+            await self._register_agent_tools(agent, user_api_keys)
+
+            # 3. Get or create conversation (STATEFUL)
             conversation = await self.conversation_service.get_or_create_conversation(
                 agent_id=agent_id, conversation_id=conversation_id
             )
 
             yield ExecutionEvent("conversation_started", conversation_id=str(conversation.id))
 
-            # 3. Save user message
+            # 4. Save user message
             await self.conversation_service.save_message(
                 conversation_id=conversation.id, role="user", content=user_message
             )
 
-            # 4. Build conversation history
+            # 5. Build conversation history
             history = await self.conversation_service.get_conversation_history(conversation.id)
 
-            # 5. Get tool schemas
+            # 6. Get tool schemas
             tool_schemas = await self._get_tool_schemas(agent)
 
-            # 6. Get LLM provider
+            # 7. Get LLM provider
             provider_type = agent.model_config.get("provider", "anthropic")
             api_key = self._get_api_key(provider_type, user_api_keys)
 
@@ -102,63 +105,121 @@ class AgentExecutionService:
             provider = LLMProviderFactory.create_provider(provider_type, api_key)
 
             try:
-                # 7. Stream LLM response with tool calling
-                agent_response_content = ""
-                tool_calls_made = []
+                # 8. Agentic loop - continue until LLM responds without calling tools
+                max_iterations = 5
+                iteration = 0
+                conversation_messages = history.copy()
+                all_tool_calls = []
+                final_response_content = ""
 
-                async for event in provider.stream_with_tools(
-                    model=agent.model_config.get("model"),
-                    messages=history,
-                    tools=tool_schemas,
-                    system=agent.instructions,
-                    temperature=agent.model_config.get("temperature", 0.7),
-                    max_tokens=agent.model_config.get("max_tokens", 4096),
-                ):
-                    if event.type == "content_delta":
-                        agent_response_content += event.delta
-                        yield ExecutionEvent("content_delta", delta=event.delta)
+                while iteration < max_iterations:
+                    iteration += 1
 
-                    elif event.type == "tool_use_start":
-                        yield ExecutionEvent(
-                            "tool_use_start",
-                            tool_name=event.tool_name,
-                            tool_input=event.tool_input,
-                        )
+                    # Stream LLM response
+                    assistant_content = ""
+                    tool_uses = []  # Track tool uses in this turn
 
-                        # Execute tool with timing
-                        start_time = time.time()
-                        tool_result = await self._execute_tool(event.tool_name, event.tool_input or {})
-                        duration_ms = int((time.time() - start_time) * 1000)
+                    async for event in provider.stream_with_tools(
+                        model=agent.model_config.get("model"),
+                        messages=conversation_messages,
+                        tools=tool_schemas,
+                        system=agent.instructions,
+                        temperature=agent.model_config.get("temperature", 0.7),
+                        max_tokens=agent.model_config.get("max_tokens", 4096),
+                    ):
+                        if event.type == "content_delta":
+                            assistant_content += event.delta
+                            # Stream content to user - will determine if this is final response later
+                            yield ExecutionEvent("content_delta", delta=event.delta)
 
-                        # Trace tool execution
-                        observability_service.trace_tool_execution(
-                            tool_name=event.tool_name,
-                            input_data=event.tool_input or {},
-                            output_data=tool_result,
-                            duration_ms=duration_ms,
-                            success=tool_result.get("success", False),
-                        )
+                        elif event.type == "tool_use_start":
+                            yield ExecutionEvent(
+                                "tool_use_start",
+                                tool_name=event.tool_name,
+                                tool_input=event.tool_input,
+                            )
 
-                        tool_calls_made.append(
-                            {
+                            # Execute tool
+                            start_time = time.time()
+                            tool_result = await self._execute_tool(event.tool_name, event.tool_input or {})
+                            duration_ms = int((time.time() - start_time) * 1000)
+
+                            # Trace tool execution
+                            observability_service.trace_tool_execution(
+                                tool_name=event.tool_name,
+                                input_data=event.tool_input or {},
+                                output_data=tool_result,
+                                duration_ms=duration_ms,
+                                success=tool_result.get("success", False),
+                            )
+
+                            # Track tool use with ID
+                            tool_uses.append({
+                                "id": event.tool_use_id,
+                                "name": event.tool_name,
+                                "input": event.tool_input or {},
+                                "result": tool_result,
+                            })
+
+                            all_tool_calls.append({
                                 "tool_name": event.tool_name,
                                 "input": event.tool_input,
                                 "output": tool_result,
-                            }
-                        )
+                            })
 
-                        yield ExecutionEvent(
-                            "tool_use_complete",
-                            tool_name=event.tool_name,
-                            result=tool_result,
-                        )
+                            yield ExecutionEvent(
+                                "tool_use_complete",
+                                tool_name=event.tool_name,
+                                result=tool_result,
+                            )
 
-                # 8. Save agent response
+                    # If no tools were called, we have the final response
+                    if len(tool_uses) == 0:
+                        final_response_content = assistant_content
+                        break
+
+                    # Build assistant message with tool_use blocks
+                    assistant_message_content = []
+                    if assistant_content:
+                        assistant_message_content.append({"type": "text", "text": assistant_content})
+
+                    for tool_use in tool_uses:
+                        assistant_message_content.append({
+                            "type": "tool_use",
+                            "id": tool_use["id"],
+                            "name": tool_use["name"],
+                            "input": tool_use["input"],
+                        })
+
+                    conversation_messages.append({
+                        "role": "assistant",
+                        "content": assistant_message_content,
+                    })
+
+                    # Build user message with tool_result blocks
+                    tool_results_content = []
+                    for tool_use in tool_uses:
+                        # Format tool result as string
+                        result_str = str(tool_use["result"].get("result", tool_use["result"]))
+                        tool_results_content.append({
+                            "type": "tool_result",
+                            "tool_use_id": tool_use["id"],
+                            "content": result_str,
+                        })
+
+                    conversation_messages.append({
+                        "role": "user",
+                        "content": tool_results_content,
+                    })
+
+                    # Continue loop to get next LLM response
+
+                # 9. Save agent response
                 await self.conversation_service.save_message(
                     conversation_id=conversation.id,
                     role="agent",
-                    content=agent_response_content,
-                    tool_calls=tool_calls_made,
+                    content=final_response_content,
+                    tool_calls=all_tool_calls,
                 )
 
                 # Trace LLM call
@@ -166,8 +227,8 @@ class AgentExecutionService:
                     model=agent.model_config.get("model"),
                     provider=provider_type,
                     input_data={"messages": history, "system": agent.instructions},
-                    output_data=agent_response_content,
-                    metadata={"tool_calls": len(tool_calls_made)},
+                    output_data=final_response_content,
+                    metadata={"tool_calls": len(all_tool_calls), "iterations": iteration},
                 )
 
                 yield ExecutionEvent("message_complete", message_id=str(uuid.uuid4()))
@@ -199,7 +260,13 @@ class AgentExecutionService:
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
 
-        query = select(Agent).where(Agent.id == agent_id).options(selectinload(Agent.integrations))
+        from app.models.integration import Integration
+
+        query = (
+            select(Agent)
+            .where(Agent.id == agent_id)
+            .options(selectinload(Agent.integrations).selectinload(Integration.tools))
+        )
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
@@ -213,6 +280,33 @@ class AgentExecutionService:
                     tool_schemas.append(tool.tool_schema)
 
         return tool_schemas
+
+    async def _register_agent_tools(self, agent: Agent, user_api_keys: dict[str, str] | None = None):
+        """
+        Register all enabled tools for the agent in the tool registry.
+        Creates tool instances from database models and registers them.
+        """
+        from app.tools.factory import ToolFactory
+
+        # Clear any existing tools for this agent (in case of re-registration)
+        # We use tool schema name as the registry key
+        for integration in agent.integrations:
+            for tool in integration.tools:
+                if tool.is_enabled:
+                    # Get tool name from schema
+                    tool_name = tool.tool_schema.get("name", str(tool.id))
+
+                    # Get API key for LLM tools
+                    api_key = None
+                    if tool.tool_type == "llm":
+                        provider_type = agent.model_config.get("provider", "anthropic")
+                        api_key = self._get_api_key(provider_type, user_api_keys)
+
+                    # Create tool instance
+                    tool_instance = ToolFactory.create_tool(tool, api_key=api_key)
+
+                    # Register in registry
+                    self.tool_registry.register(tool_name, tool_instance)
 
     async def _execute_tool(self, tool_name: str, tool_input: dict[str, Any]) -> dict[str, Any]:
         """Execute a tool by name."""

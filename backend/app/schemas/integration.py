@@ -52,17 +52,17 @@ class IntegrationResponse(BaseModel):
     """Schema for integration response."""
 
     id: UUID
-    agent_id: UUID
+    agent_id: UUID = Field(..., serialization_alias="agentId")
     type: Literal["platform", "custom-tool", "sub-agent"]
-    platform_id: str | None
+    platform_id: str | None = Field(None, serialization_alias="platformId")
     name: str
     description: str | None
     config: dict
-    created_at: datetime
-    updated_at: datetime
-    tools: list["ToolResponse"] = []
+    created_at: datetime = Field(..., serialization_alias="createdAt")
+    updated_at: datetime = Field(..., serialization_alias="updatedAt")
+    tools: list["ToolResponse"] = Field(default=[], serialization_alias="availableTools")
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 # Import here to avoid circular dependency

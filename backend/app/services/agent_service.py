@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.agent import Agent
+from app.models.integration import Integration
 from app.schemas.agent import AgentCreate, AgentUpdate
 
 
@@ -37,11 +38,13 @@ class AgentService:
         return agent
 
     async def get_agent_by_id(self, agent_id: uuid.UUID) -> Agent | None:
-        """Get agent by ID with integrations loaded."""
+        """Get agent by ID with integrations and tools loaded."""
         query = (
             select(Agent)
             .where(Agent.id == agent_id)
-            .options(selectinload(Agent.integrations))
+            .options(
+                selectinload(Agent.integrations).selectinload(Integration.tools)
+            )
         )
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
@@ -49,11 +52,13 @@ class AgentService:
     async def list_agents_for_user(
         self, user_id: uuid.UUID, organization_id: uuid.UUID
     ) -> list[Agent]:
-        """List all agents for a user."""
+        """List all agents for a user with integrations and tools loaded."""
         query = (
             select(Agent)
             .where(Agent.user_id == user_id, Agent.organization_id == organization_id)
-            .options(selectinload(Agent.integrations))
+            .options(
+                selectinload(Agent.integrations).selectinload(Integration.tools)
+            )
             .order_by(Agent.created_at.desc())
         )
         result = await self.session.execute(query)

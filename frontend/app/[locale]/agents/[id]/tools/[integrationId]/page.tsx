@@ -1,14 +1,15 @@
 'use client'
 
-import { useState, use } from 'react'
+import { useState, use, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { mockAgents } from '@/lib/mock-data'
 import { toast } from 'sonner'
 import Image from 'next/image'
 import { useTranslations } from 'next-intl'
+import { apiClient } from '@/lib/api/client'
+import type { Agent, IntegrationSource } from '@/lib/types'
 
 export default function EditIntegrationPage({
   params,
@@ -19,10 +20,47 @@ export default function EditIntegrationPage({
   const router = useRouter()
   const t = useTranslations('toolsEdit')
 
-  const agent = mockAgents.find((a) => a.id === resolvedParams.id)
-  const integration = agent?.integrations.find((i) => i.id === resolvedParams.integrationId)
+  const [agent, setAgent] = useState<Agent | null>(null)
+  const [integration, setIntegration] = useState<IntegrationSource | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const [enabledToolIds, setEnabledToolIds] = useState<string[]>(integration?.enabledToolIds || [])
+  const [enabledToolIds, setEnabledToolIds] = useState<string[]>([])
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setIsLoading(true)
+        const agentData = await apiClient.getAgent(resolvedParams.id)
+        setAgent(agentData)
+
+        const foundIntegration = agentData.integrations.find(
+          (i) => i.id === resolvedParams.integrationId
+        )
+        setIntegration(foundIntegration || null)
+
+        if (foundIntegration) {
+          setEnabledToolIds(
+            foundIntegration.availableTools.filter((t) => t.isEnabled !== false).map((t) => t.id)
+          )
+        }
+      } catch (error) {
+        console.error('Failed to load agent:', error)
+        toast.error('Failed to load integration')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadData()
+  }, [resolvedParams.id, resolvedParams.integrationId])
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <p className="font-light text-gray-400">Loading...</p>
+      </div>
+    )
+  }
 
   if (!agent || !integration) {
     return (
@@ -48,10 +86,16 @@ export default function EditIntegrationPage({
     router.push(`/agents/${resolvedParams.id}`)
   }
 
-  function handleRemove() {
+  async function handleRemove() {
     if (integration && confirm(t('confirmRemove', { name: integration.name }))) {
-      toast.success(t('successRemoved'))
-      router.push(`/agents/${resolvedParams.id}`)
+      try {
+        await apiClient.deleteIntegration(integration.id)
+        toast.success(t('successRemoved'))
+        router.push(`/${resolvedParams.locale}/agents/${resolvedParams.id}`)
+      } catch (error) {
+        console.error('Failed to delete integration:', error)
+        toast.error('Failed to remove integration')
+      }
     }
   }
 

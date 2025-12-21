@@ -67,7 +67,7 @@ export default function AgentsPage() {
             {agents.map((agent) => {
               const totalTools =
                 agent.integrations?.reduce(
-                  (sum, integration) => sum + integration.enabledToolIds.length,
+                  (sum, integration) => sum + (integration.availableTools?.length || 0),
                   0
                 ) || 0
 

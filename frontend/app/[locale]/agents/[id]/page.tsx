@@ -44,18 +44,24 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setAgent({
         id: 'new',
+        userId: '550e8400-e29b-41d4-a716-446655440000',
+        organizationId: '550e8400-e29b-41d4-a716-446655440001',
         name: '',
         instructions: `You are a helpful assistant. Your role is to:\n\n- Assist customers with their questions\n- Be polite and professional\n- Provide accurate information`,
         status: 'draft',
+        model_config: {
+          provider: 'anthropic',
+          model: 'claude-sonnet-4-5-20250929',
+          temperature: 0.7,
+          max_tokens: 4096,
+        },
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         integrations: [],
       })
       setHasUnsavedChanges(true) // New agents always have unsaved changes
     } else if (fetchedAgent) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAgent(fetchedAgent)
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHasUnsavedChanges(false)
     }
   }, [isNewAgent, fetchedAgent])
@@ -331,7 +337,7 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
                                 {integration.name}
                               </h3>
                               <p className="text-muted-foreground mt-0.5 text-xs">
-                                {t('toolCount', { count: integration.enabledToolIds.length })}
+                                {t('toolCount', { count: integration.availableTools?.length || 0 })}
                               </p>
                             </div>
                           </div>
