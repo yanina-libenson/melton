@@ -3,9 +3,9 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { mockAgents } from '@/lib/mock-data'
 import { PLATFORM_INTEGRATIONS } from '@/lib/platforms'
 import { LanguageSwitcher } from './language-switcher'
+import { useAgent } from '@/lib/hooks/useAgents'
 
 export function Nav() {
   const pathname = usePathname()
@@ -13,6 +13,13 @@ export function Nav() {
 
   // Remove locale prefix from pathname for matching
   const pathWithoutLocale = pathname.replace(/^\/(en|es-AR)/, '') || '/'
+
+  // Extract agent ID from URL for fetching agent data
+  const agentMatch = pathWithoutLocale.match(/^\/agents\/([^\/]+)/)
+  const agentId = agentMatch?.[1] !== 'new' ? agentMatch?.[1] || null : null
+
+  // Fetch agent data if we have an agent ID
+  const { agent } = useAgent(agentId || null)
 
   // Parse breadcrumbs from pathname
   const getBreadcrumbs = () => {
@@ -32,30 +39,28 @@ export function Nav() {
     }
 
     // Parse agent routes
-    const agentMatch = pathWithoutLocale.match(/^\/agents\/([^\/]+)/)
     if (agentMatch) {
-      const agentId = agentMatch[1]
+      const agentIdFromMatch = agentMatch[1]
 
-      if (agentId === 'new') {
+      if (agentIdFromMatch === 'new') {
         crumbs.push({ label: t('newAgent'), href: '/agents/new' })
       } else {
-        const agent = mockAgents.find((a) => a.id === agentId)
         const agentName = agent?.name || t('agents')
-        crumbs.push({ label: agentName, href: `/agents/${agentId}` })
+        crumbs.push({ label: agentName, href: `/agents/${agentIdFromMatch}` })
 
         // Parse tool routes
         if (pathWithoutLocale.includes('/tools/add')) {
-          crumbs.push({ label: t('addTool'), href: `/agents/${agentId}/tools/add` })
+          crumbs.push({ label: t('addTool'), href: `/agents/${agentIdFromMatch}/tools/add` })
         } else if (pathWithoutLocale.includes('/tools/integration/')) {
           const platformMatch = pathWithoutLocale.match(/\/tools\/integration\/([^\/]+)/)
           if (platformMatch) {
             const platformId = platformMatch[1]
             const platform = PLATFORM_INTEGRATIONS.find((p) => p.id === platformId)
-            crumbs.push({ label: t('addTool'), href: `/agents/${agentId}/tools/add` })
+            crumbs.push({ label: t('addTool'), href: `/agents/${agentIdFromMatch}/tools/add` })
             crumbs.push({ label: platform?.name || t('addTool'), href: pathname })
           }
         } else if (pathWithoutLocale.includes('/deploy')) {
-          crumbs.push({ label: t('connect'), href: `/agents/${agentId}/deploy` })
+          crumbs.push({ label: t('connect'), href: `/agents/${agentIdFromMatch}/deploy` })
         }
       }
     }

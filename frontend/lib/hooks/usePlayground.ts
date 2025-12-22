@@ -30,6 +30,7 @@ export function usePlayground({
   const [isConnected, setIsConnected] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
   const [currentResponse, setCurrentResponse] = useState('')
+  const [conversationId, setConversationId] = useState<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const currentResponseRef = useRef<string>('')
 
@@ -60,6 +61,7 @@ export function usePlayground({
 
             case 'conversation_started':
               console.log('Conversation started:', data.conversation_id)
+              setConversationId(data.conversation_id as string)
               break
 
             case 'content_delta':
@@ -135,12 +137,13 @@ export function usePlayground({
     }
     setIsConnected(false)
     setIsStreaming(false)
+    setConversationId(null)
     currentResponseRef.current = ''
     setCurrentResponse('')
   }, [])
 
   const sendMessage = useCallback(
-    (content: string, conversationId?: string) => {
+    (content: string, explicitConversationId?: string) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
         if (onError) {
           onError('Not connected')
@@ -151,7 +154,7 @@ export function usePlayground({
       const message = {
         type: 'user_message',
         content,
-        conversation_id: conversationId || null,
+        conversation_id: explicitConversationId || conversationId || null,
       }
 
       wsRef.current.send(JSON.stringify(message))
@@ -166,7 +169,7 @@ export function usePlayground({
         })
       }
     },
-    [onMessage, onError]
+    [conversationId, onMessage, onError]
   )
 
   // Auto-connect on mount (only if enabled)

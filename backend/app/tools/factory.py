@@ -1,6 +1,5 @@
 """Tool factory for creating tool instances from database records."""
 
-from typing import Any
 
 from app.models.tool import Tool as ToolModel
 from app.tools.api_tool import APITool
@@ -37,7 +36,7 @@ class ToolFactory:
             return ToolFactory._create_llm_tool(tool_model, api_key)
         elif tool_type == "sub-agent":
             # Phase 4 - not implemented yet
-            raise ValueError(f"Sub-agent tools not yet supported")
+            raise ValueError("Sub-agent tools not yet supported")
         else:
             raise ValueError(f"Unknown tool type: {tool_type}")
 

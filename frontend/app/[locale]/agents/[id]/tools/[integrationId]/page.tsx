@@ -152,24 +152,30 @@ export default function EditIntegrationPage({
             {integration.availableTools.map((tool) => (
               <div
                 key={tool.id}
-                onClick={() => handleToggleTool(tool.id)}
-                className={`cursor-pointer rounded-xl border px-5 py-4 transition-all duration-200 ease-out ${
+                className={`rounded-xl border px-5 py-4 transition-all duration-200 ease-out ${
                   enabledToolIds.includes(tool.id)
                     ? 'border-primary bg-primary/5 shadow-soft-sm'
-                    : 'border-border bg-card shadow-soft-xs hover:shadow-soft-sm hover:border-border'
+                    : 'border-border bg-card shadow-soft-xs'
                 }`}
               >
                 <div className="flex items-start gap-3">
                   <input
                     type="checkbox"
                     checked={enabledToolIds.includes(tool.id)}
-                    onChange={() => {}}
+                    onChange={() => handleToggleTool(tool.id)}
                     className="mt-0.5 h-4 w-4"
                   />
                   <div className="flex-1">
                     <p className="text-foreground text-sm font-medium">{tool.name}</p>
                     <p className="text-muted-foreground mt-1 text-xs">{tool.description}</p>
                   </div>
+                  <Link
+                    href={`/agents/${resolvedParams.id}/tools/edit/${tool.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-muted-foreground hover:text-foreground text-sm transition-colors"
+                  >
+                    Configure →
+                  </Link>
                 </div>
               </div>
             ))}

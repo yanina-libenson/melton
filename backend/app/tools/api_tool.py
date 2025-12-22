@@ -1,8 +1,7 @@
 """Custom API tool implementation with full authentication support."""
 
-import asyncio
 from datetime import datetime, timedelta
-from typing import Any, Literal
+from typing import Any
 
 import httpx
 

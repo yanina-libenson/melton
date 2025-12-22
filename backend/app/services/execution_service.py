@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.llm.factory import LLMProviderFactory
 from app.models.agent import Agent
 from app.services.conversation_service import ConversationService
+from app.services.llm_model_service import LLMModelService
 from app.tools.registry import ToolRegistry
 from app.utils.observability import observability_service, trace_execution
 
@@ -36,6 +37,7 @@ class AgentExecutionService:
     def __init__(self, session: AsyncSession):
         self.session = session
         self.conversation_service = ConversationService(session)
+        self.llm_model_service = LLMModelService(session)
         self.tool_registry = ToolRegistry()
 
     @trace_execution("agent_conversation")
@@ -299,7 +301,9 @@ class AgentExecutionService:
                     # Get API key for LLM tools
                     api_key = None
                     if tool.tool_type == "llm":
-                        provider_type = agent.model_config.get("provider", "anthropic")
+                        # Determine provider from the tool's model, not the agent's
+                        tool_model = tool.config.get("llm_model", "")
+                        provider_type = await self.llm_model_service.get_provider_for_model(tool_model)
                         api_key = self._get_api_key(provider_type, user_api_keys)
 
                     # Create tool instance

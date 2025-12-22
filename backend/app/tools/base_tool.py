@@ -60,12 +60,7 @@ class BaseTool(ABC):
         # Basic validation - can be enhanced with jsonschema
         schema = self.get_schema()
         input_schema = schema.get("input_schema", {})
-        properties = input_schema.get("properties", {})
         required = input_schema.get("required", [])
 
         # Check required fields
-        for field in required:
-            if field not in input_data:
-                return False
-
-        return True
+        return all(field in input_data for field in required)

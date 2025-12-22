@@ -80,6 +80,32 @@ class BaseLLMProvider(ABC):
         pass
 
     @abstractmethod
+    async def generate_structured_output(
+        self,
+        model: str,
+        prompt: str,
+        output_schema: dict[str, Any],
+        system: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+    ) -> dict[str, Any]:
+        """
+        Generate structured output matching a JSON schema (for stateless tool LLMs).
+
+        Args:
+            model: Model identifier
+            prompt: Input prompt
+            output_schema: JSON schema for the output structure
+            system: System instructions
+            temperature: Generation temperature
+            max_tokens: Maximum tokens to generate
+
+        Returns:
+            Parsed JSON matching the output schema
+        """
+        pass
+
+    @abstractmethod
     def convert_tool_schema(self, tool_schema: dict[str, Any]) -> dict[str, Any]:
         """
         Convert our tool schema format to provider-specific format.

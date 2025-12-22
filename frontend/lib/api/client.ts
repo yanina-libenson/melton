@@ -159,6 +159,10 @@ class APIClient {
     return this.request(`${API_VERSION}/integrations/${integrationId}/tools`)
   }
 
+  async getTool(toolId: string): Promise<Tool> {
+    return this.request(`${API_VERSION}/tools/${toolId}`)
+  }
+
   async createTool(data: {
     integration_id: string
     name: string

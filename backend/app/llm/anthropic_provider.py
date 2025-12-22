@@ -28,11 +28,10 @@ class AnthropicProvider(BaseLLMProvider):
 
     async def close(self):
         """Explicitly close the clients."""
-        try:
+        import contextlib
+
+        with contextlib.suppress(Exception):
             await self._httpx_client.aclose()
-        except Exception:
-            # Ignore cleanup errors
-            pass
 
     async def stream_with_tools(
         self,
@@ -60,14 +59,17 @@ class AnthropicProvider(BaseLLMProvider):
                     if hasattr(event.delta, "text"):
                         yield StreamEvent(event_type="content_delta", delta=event.delta.text)
 
-                elif event.type == "content_block_start":
-                    if hasattr(event.content_block, "type") and event.content_block.type == "tool_use":
-                        yield StreamEvent(
-                            event_type="tool_use_start",
-                            tool_name=event.content_block.name,
-                            tool_input=event.content_block.input,
-                            tool_use_id=event.content_block.id,
-                        )
+                elif (
+                    event.type == "content_block_start"
+                    and hasattr(event.content_block, "type")
+                    and event.content_block.type == "tool_use"
+                ):
+                    yield StreamEvent(
+                        event_type="tool_use_start",
+                        tool_name=event.content_block.name,
+                        tool_input=event.content_block.input,
+                        tool_use_id=event.content_block.id,
+                    )
 
     async def generate_without_tools(
         self,
@@ -93,6 +95,50 @@ class AnthropicProvider(BaseLLMProvider):
                 text_content += block.text
 
         return text_content
+
+    async def generate_structured_output(
+        self,
+        model: str,
+        prompt: str,
+        output_schema: dict[str, Any],
+        system: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+    ) -> dict[str, Any]:
+        """Generate structured output matching a JSON schema."""
+        import json
+
+        # Build enhanced system prompt with JSON schema instructions
+        schema_description = json.dumps(output_schema, indent=2)
+        enhanced_system = f"""{system or ''}
+
+IMPORTANT: You must respond with ONLY a valid JSON object that matches this exact schema:
+{schema_description}
+
+Do not include any explanatory text before or after the JSON. Only output the JSON object."""
+
+        message = await self.client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system=enhanced_system,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        # Extract and parse JSON content
+        for block in message.content:
+            if hasattr(block, "text"):
+                # Try to extract JSON from the text (in case there's extra text)
+                text = block.text.strip()
+                # Find JSON object boundaries
+                start_idx = text.find('{')
+                end_idx = text.rfind('}')
+                if start_idx != -1 and end_idx != -1:
+                    json_str = text[start_idx:end_idx+1]
+                    return json.loads(json_str)
+                return json.loads(text)
+
+        return {}
 
     def convert_tool_schema(self, tool_schema: dict[str, Any]) -> dict[str, Any]:
         """Convert to Anthropic tool format."""

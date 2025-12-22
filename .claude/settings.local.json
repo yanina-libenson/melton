@@ -36,7 +36,13 @@
       "Bash(poetry update:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(docker ps:*)"
+      "Bash(docker ps:*)",
+      "Bash(npm run lint)",
+      "Bash(poetry run ruff:*)",
+      "Bash(poetry add:*)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "Bash(python3.13:*)",
+      "Bash(xargs grep:*)"
     ]
   }
 }

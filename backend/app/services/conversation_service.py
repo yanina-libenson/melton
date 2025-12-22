@@ -59,6 +59,7 @@ class ConversationService:
 
         Returns:
             List of messages in format: [{"role": "user", "content": "..."}, ...]
+            Note: "agent" role is converted to "assistant" for LLM API compatibility
         """
         query = (
             select(Message)
@@ -69,7 +70,14 @@ class ConversationService:
         result = await self.session.execute(query)
         messages = result.scalars().all()
 
-        return [{"role": msg.role, "content": msg.content} for msg in messages]
+        # Convert "agent" role to "assistant" for LLM API compatibility
+        return [
+            {
+                "role": "assistant" if msg.role == "agent" else msg.role,
+                "content": msg.content,
+            }
+            for msg in messages
+        ]
 
     async def save_message(
         self,

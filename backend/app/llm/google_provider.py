@@ -93,6 +93,35 @@ class GoogleProvider(BaseLLMProvider):
         response = await model_instance.generate_content_async(full_prompt)
         return response.text
 
+    async def generate_structured_output(
+        self,
+        model: str,
+        prompt: str,
+        output_schema: dict[str, Any],
+        system: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+    ) -> dict[str, Any]:
+        """Generate structured output matching a JSON schema."""
+        import json
+
+        model_instance = genai.GenerativeModel(
+            model_name=model,
+            generation_config={
+                "temperature": temperature,
+                "max_output_tokens": max_tokens,
+                "response_mime_type": "application/json",
+                "response_schema": output_schema,
+            },
+        )
+
+        full_prompt = f"Instructions: {system}\n\n{prompt}" if system else prompt
+
+        response = await model_instance.generate_content_async(full_prompt)
+
+        # Parse and return the JSON content
+        return json.loads(response.text)
+
     def convert_tool_schema(self, tool_schema: dict[str, Any]) -> dict[str, Any]:
         """Convert to Gemini function format."""
         return genai.protos.FunctionDeclaration(

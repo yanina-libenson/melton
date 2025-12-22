@@ -72,6 +72,7 @@ export default function IntegrationConfigPage({
         llmEnabled: boolean
         llmModel: string
         llmInstructions: string
+        creativityLevel: 'low' | 'medium' | 'high'
       }
     >
   >({})
@@ -99,6 +100,7 @@ export default function IntegrationConfigPage({
         }>
         outputFields: Array<{
           name: string
+          type: 'text' | 'number' | 'boolean'
           description: string
         }>
       }
@@ -253,7 +255,7 @@ export default function IntegrationConfigPage({
       ...toolSchemas,
       [toolId]: {
         ...schema,
-        outputFields: [...schema.outputFields, { name: '', description: '' }],
+        outputFields: [...schema.outputFields, { name: '', type: 'text', description: '' }],
       },
     })
   }
@@ -431,42 +433,81 @@ export default function IntegrationConfigPage({
           llmEnabled: false,
           llmModel: '',
           llmInstructions: '',
+          creativityLevel: 'medium' as const,
         }
         const toolSchema = toolSchemas[tool.id] || { inputFields: [], outputFields: [] }
+
+        const toolSchemaPayload: {
+          name: string
+          description: string
+          input_schema: {
+            type: string
+            properties: Record<string, { type: string; description: string }>
+            required: string[]
+          }
+          output_schema?: {
+            type: string
+            properties: Record<string, { type: string; description: string }>
+            required: string[]
+          }
+        } = {
+          name: tool.name.toLowerCase().replace(/\s+/g, '_'),
+          description: tool.description || tool.name,
+          input_schema: {
+            type: 'object',
+            properties: Object.fromEntries(
+              toolSchema.inputFields.map((field) => [
+                field.name,
+                {
+                  type:
+                    field.type === 'number'
+                      ? 'number'
+                      : field.type === 'boolean'
+                        ? 'boolean'
+                        : 'string',
+                  description: field.description,
+                },
+              ])
+            ),
+            required: toolSchema.inputFields.filter((f) => f.required).map((f) => f.name),
+          },
+        }
+
+        // Add output schema if output fields are defined
+        if (toolSchema.outputFields.length > 0) {
+          toolSchemaPayload.output_schema = {
+            type: 'object',
+            properties: Object.fromEntries(
+              toolSchema.outputFields.map((field) => [
+                field.name,
+                {
+                  type:
+                    field.type === 'number'
+                      ? 'number'
+                      : field.type === 'boolean'
+                        ? 'boolean'
+                        : 'string',
+                  description: field.description,
+                },
+              ])
+            ),
+            required: toolSchema.outputFields.map((f) => f.name),
+          }
+        }
 
         await apiClient.createTool({
           integration_id: integration.id,
           name: tool.name,
           description: tool.description || '',
           tool_type: customToolType || 'api',
-          tool_schema: {
-            name: tool.name.toLowerCase().replace(/\s+/g, '_'),
-            description: tool.description || tool.name,
-            input_schema: {
-              type: 'object',
-              properties: Object.fromEntries(
-                toolSchema.inputFields.map((field) => [
-                  field.name,
-                  {
-                    type:
-                      field.type === 'number'
-                        ? 'number'
-                        : field.type === 'boolean'
-                          ? 'boolean'
-                          : 'string',
-                    description: field.description,
-                  },
-                ])
-              ),
-              required: toolSchema.inputFields.filter((f) => f.required).map((f) => f.name),
-            },
-          },
+          tool_schema: toolSchemaPayload,
           config: {
             endpoint: tool.endpoint,
             method: tool.method,
             llm_enabled: toolConfig.llmEnabled || false,
             llm_model: toolConfig.llmModel,
             llm_instructions: toolConfig.llmInstructions,
+            creativity_level: toolConfig.creativityLevel || 'medium',
           },
           is_enabled: true,
         })
@@ -626,6 +667,7 @@ export default function IntegrationConfigPage({
                       llmModel: value,
                       llmEnabled: true,
                       llmInstructions: toolConfigs['llm-default']?.llmInstructions || '',
+                      creativityLevel: toolConfigs['llm-default']?.creativityLevel || 'medium',
                     },
                   })
                 }
@@ -644,6 +686,41 @@ export default function IntegrationConfigPage({
 
             <div>
               <Label className="text-foreground mb-3 block text-sm font-medium">
+                Creativity Level
+              </Label>
+              <Select
+                value={toolConfigs['llm-default']?.creativityLevel || 'medium'}
+                onValueChange={(value: 'low' | 'medium' | 'high') =>
+                  setToolConfigs({
+                    ...toolConfigs,
+                    'llm-default': {
+                      ...toolConfigs['llm-default'],
+                      llmModel:
+                        toolConfigs['llm-default']?.llmModel || 'claude-sonnet-4-5-20250929',
+                      llmEnabled: true,
+                      llmInstructions: toolConfigs['llm-default']?.llmInstructions || '',
+                      creativityLevel: value,
+                    },
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-muted-foreground mt-2 text-xs">
+                Controls how varied the tool&apos;s responses are. Higher creativity produces more
+                diverse outputs.
+              </p>
+            </div>
+
+            <div>
+              <Label className="text-foreground mb-3 block text-sm font-medium">
                 {t('instructionsLabel')}
               </Label>
               <Textarea
@@ -658,6 +735,7 @@ export default function IntegrationConfigPage({
                         toolConfigs['llm-default']?.llmModel || 'claude-sonnet-4-5-20250929',
                       llmEnabled: true,
                       llmInstructions: e.target.value,
+                      creativityLevel: toolConfigs['llm-default']?.creativityLevel || 'medium',
                     },
                   })
                 }
@@ -979,6 +1057,7 @@ export default function IntegrationConfigPage({
                     llmEnabled: false,
                     llmModel: 'claude-sonnet-4',
                     llmInstructions: '',
+                    creativityLevel: 'medium' as const,
                   }
 
                   return (
@@ -1021,12 +1100,18 @@ export default function IntegrationConfigPage({
                               </div>
                               <button
                                 type="button"
-                                onClick={() =>
+                                onClick={() => {
+                                  const newConfig = {
+                                    llmEnabled: !config.llmEnabled,
+                                    llmModel: config.llmModel,
+                                    llmInstructions: config.llmInstructions,
+                                    creativityLevel: config.creativityLevel,
+                                  }
                                   setToolConfigs({
                                     ...toolConfigs,
-                                    [tool.id]: { ...config, llmEnabled: !config.llmEnabled },
+                                    [tool.id]: newConfig,
                                   })
-                                }
+                                }}
                                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                                   config.llmEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
                                 }`}
@@ -1261,17 +1346,45 @@ export default function IntegrationConfigPage({
                                   key={index}
                                   className="border-border bg-card shadow-soft-xs space-y-4 rounded-xl border p-5"
                                 >
-                                  <div>
-                                    <Label className="text-muted-foreground mb-2 block text-xs">
-                                      {t('fieldNameLabel')}
-                                    </Label>
-                                    <Input
-                                      placeholder={t('outputFieldNamePlaceholder')}
-                                      value={field.name}
-                                      onChange={(e) =>
-                                        updateOutputField(tool.id, index, { name: e.target.value })
-                                      }
-                                    />
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                      <Label className="text-muted-foreground mb-2 block text-xs">
+                                        {t('fieldNameLabel')}
+                                      </Label>
+                                      <Input
+                                        placeholder={t('outputFieldNamePlaceholder')}
+                                        value={field.name}
+                                        onChange={(e) =>
+                                          updateOutputField(tool.id, index, {
+                                            name: e.target.value,
+                                          })
+                                        }
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label className="text-muted-foreground mb-2 block text-xs">
+                                        {t('fieldTypeLabel')}
+                                      </Label>
+                                      <Select
+                                        value={field.type}
+                                        onValueChange={(value: 'text' | 'number' | 'boolean') =>
+                                          updateOutputField(tool.id, index, { type: value })
+                                        }
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="text">{t('fieldTypeText')}</SelectItem>
+                                          <SelectItem value="number">
+                                            {t('fieldTypeNumber')}
+                                          </SelectItem>
+                                          <SelectItem value="boolean">
+                                            {t('fieldTypeBoolean')}
+                                          </SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
                                   </div>
                                   <div>
                                     <Label className="text-muted-foreground mb-2 block text-xs">
