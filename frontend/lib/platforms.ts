@@ -2,10 +2,19 @@ import { PlatformIntegration, Tool } from './types'
 
 export const PLATFORM_INTEGRATIONS: PlatformIntegration[] = [
   {
-    id: 'custom-tool',
-    name: 'Custom Tool',
-    description: 'Create an LLM tool or connect to an API',
-    icon: 'https://api.iconify.design/lucide/plus-circle.svg?color=%23888888',
+    id: 'api-tool',
+    name: 'API Tool',
+    description: 'Connect to any REST API endpoint',
+    icon: 'https://api.iconify.design/lucide/link.svg?color=%23888888',
+    category: 'Custom',
+    requiresAuth: false,
+    authFields: [],
+  },
+  {
+    id: 'llm-tool',
+    name: 'LLM Tool',
+    description: 'Create a tool powered purely by AI reasoning',
+    icon: 'https://api.iconify.design/lucide/sparkles.svg?color=%23888888',
     category: 'Custom',
     requiresAuth: false,
     authFields: [],

@@ -43,18 +43,26 @@ class ToolFactory:
     @staticmethod
     def _create_api_tool(tool_model: ToolModel) -> APITool:
         """Create an APITool instance."""
+        # Get integration config for base URL and authentication
+        integration_config = tool_model.integration.config or {}
+
         config = {
             "name": tool_model.name,
             "description": tool_model.description,
-            "endpoint": tool_model.config.get("endpoint"),
-            "method": tool_model.config.get("method", "GET"),
-            "authentication": tool_model.config.get("authentication", "none"),
-            "timeout": tool_model.config.get("timeout", 30),
-            # LLM enhancement
+            # Get endpoint from integration's baseUrl
+            "endpoint": integration_config.get("baseUrl", ""),
+            "method": integration_config.get("method", "GET"),
+            "authentication": integration_config.get("authentication", "none"),
+            "timeout": integration_config.get("timeout", 30),
+            # LLM enhancement from tool config
             "llm_enhanced": tool_model.config.get("llm_enabled", False),
             "llm_model": tool_model.config.get("llm_model"),
             "llm_instructions": tool_model.config.get("llm_instructions"),
-            # Auth config (will be loaded from integration)
+            # Include input_schema from tool_schema for validation
+            "input_schema": tool_model.tool_schema.get("input_schema", {}),
+            # Merge auth config from integration
+            **integration_config,
+            # Override with tool-specific config
             **tool_model.config,
         }
 

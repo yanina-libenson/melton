@@ -78,3 +78,38 @@ class ToolResponse(BaseModel):
     updated_at: datetime = Field(..., serialization_alias="updatedAt")
 
     model_config = {"from_attributes": True, "populate_by_name": True}
+
+
+class ToolTestRequest(BaseModel):
+    """Schema for testing a tool configuration."""
+
+    # API configuration
+    endpoint: str = Field(..., description="API endpoint URL (supports {variable} templating)")
+    method: Literal["GET", "POST", "PUT", "DELETE", "PATCH"] = Field(
+        default="GET", description="HTTP method"
+    )
+    authentication: Literal["none", "api-key", "bearer", "basic"] = Field(
+        default="none", description="Authentication type"
+    )
+    auth_config: dict = Field(default_factory=dict, description="Authentication configuration")
+
+    # Tool input/output configuration
+    test_input: dict = Field(default_factory=dict, description="Test input values")
+    output_mode: Literal["full", "extract", "llm"] = Field(
+        default="full", description="Output transformation mode"
+    )
+    output_mapping: dict = Field(
+        default_factory=dict, description="Field extraction mapping (for extract mode)"
+    )
+    llm_config: dict | None = Field(None, description="LLM transformation config (for llm mode)")
+
+
+class ToolTestResponse(BaseModel):
+    """Schema for tool test result."""
+
+    success: bool
+    output: dict | list | str | None
+    error: str | None = None
+    debug_info: dict | None = Field(
+        None, description="Debug information (API response, execution time, etc.)"
+    )

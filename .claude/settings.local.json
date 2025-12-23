@@ -42,7 +42,9 @@
       "Bash(poetry add:*)",
       "WebFetch(domain:docs.anthropic.com)",
       "Bash(python3.13:*)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(cat:*)",
+      "Bash(docker-compose restart:*)"
     ]
   }
 }

@@ -33,21 +33,24 @@ export default function IntegrationConfigPage({
 
   const platform = PLATFORM_INTEGRATIONS.find((p) => p.id === resolvedParams.platformId)
   const isCustomTool = resolvedParams.platformId === 'custom-tool'
+  const isLlmTool = resolvedParams.platformId === 'llm-tool'
   const isSubAgent = resolvedParams.platformId === 'sub-agent'
 
   // Pre-built integration tools or empty for custom
   const [tools, setTools] = useState<Tool[]>(
-    isCustomTool || isSubAgent ? [] : PLATFORM_TOOLS[resolvedParams.platformId] || []
+    isCustomTool || isLlmTool || isSubAgent ? [] : PLATFORM_TOOLS[resolvedParams.platformId] || []
   )
 
   const [authData, setAuthData] = useState<Record<string, string>>({})
   const [enabledToolIds, setEnabledToolIds] = useState<string[]>(tools.map((t) => t.id))
   const [step, setStep] = useState<'type-selection' | 'auth' | 'tools' | 'config'>(
-    isCustomTool ? 'type-selection' : isSubAgent ? 'config' : 'auth'
+    isCustomTool ? 'type-selection' : isLlmTool ? 'config' : isSubAgent ? 'config' : 'auth'
   )
 
-  // Custom tool type selection
-  const [customToolType, setCustomToolType] = useState<CustomToolType | null>(null)
+  // Custom tool type selection - for llm-tool, pre-select 'llm'
+  const [customToolType, setCustomToolType] = useState<CustomToolType | null>(
+    isLlmTool ? 'llm' : null
+  )
 
   // Custom tool fields
   const [toolName, setToolName] = useState(platform?.name || '')
@@ -356,7 +359,7 @@ export default function IntegrationConfigPage({
         setEnabledToolIds([tool.id])
         setExpandedToolId(tool.id)
       }
-    } else if (isCustomTool && customToolType === 'llm') {
+    } else if (isLlmTool || (isCustomTool && customToolType === 'llm')) {
       if (!toolName.trim()) {
         toast.error(t('errorToolNameRequired'))
         return
@@ -412,13 +415,13 @@ export default function IntegrationConfigPage({
         platform_id?: string
       } = {
         agent_id: resolvedParams.id,
-        type: isSubAgent ? 'sub-agent' : isCustomTool ? 'custom-tool' : 'platform',
+        type: isSubAgent ? 'sub-agent' : isCustomTool || isLlmTool ? 'custom-tool' : 'platform',
         name: toolName || platform?.name || 'Integration',
         description: toolDescription,
         config: integrationConfig,
       }
 
-      if (!isCustomTool) {
+      if (!isCustomTool && !isLlmTool) {
         integrationData.platform_id = resolvedParams.platformId
       }
 
@@ -542,7 +545,7 @@ export default function IntegrationConfigPage({
                 router.push(`/agents/${resolvedParams.id}/tools/add`)
               }
             } else if (step === 'tools') {
-              if (isSubAgent || (isCustomTool && customToolType === 'llm')) {
+              if (isSubAgent || isLlmTool || (isCustomTool && customToolType === 'llm')) {
                 setStep('config')
               } else if (isCustomTool && customToolType === 'api') {
                 setStep('auth')
@@ -628,7 +631,7 @@ export default function IntegrationConfigPage({
         )}
 
         {/* LLM-Only Configuration */}
-        {step === 'config' && isCustomTool && customToolType === 'llm' && (
+        {step === 'config' && (isLlmTool || (isCustomTool && customToolType === 'llm')) && (
           <div className="mb-12 space-y-8">
             <div>
               <Label className="text-foreground mb-3 block text-sm font-medium">
@@ -1452,7 +1455,7 @@ export default function IntegrationConfigPage({
                   router.push(`/agents/${resolvedParams.id}/tools/add`)
                 }
               } else if (step === 'tools') {
-                if (isSubAgent || (isCustomTool && customToolType === 'llm')) {
+                if (isSubAgent || isLlmTool || (isCustomTool && customToolType === 'llm')) {
                   setStep('config')
                 } else if (isCustomTool && customToolType === 'api') {
                   setStep('auth')

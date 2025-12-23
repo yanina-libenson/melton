@@ -74,7 +74,7 @@ class AgentExecutionService:
 
             # 3. Get or create conversation (STATEFUL)
             conversation = await self.conversation_service.get_or_create_conversation(
-                agent_id=agent_id, conversation_id=conversation_id
+                agent_id=agent_id, conversation_id=conversation_id, channel_type="test"
             )
 
             yield ExecutionEvent("conversation_started", conversation_id=str(conversation.id))
@@ -89,6 +89,16 @@ class AgentExecutionService:
 
             # 6. Get tool schemas
             tool_schemas = await self._get_tool_schemas(agent)
+
+            # DEBUG: Log tool schemas being sent to LLM
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"========== TOOL SCHEMAS FOR LLM ==========")
+            for schema in tool_schemas:
+                logger.error(f"Tool: {schema.get('name')}")
+                logger.error(f"Description: {schema.get('description')}")
+                logger.error(f"Input schema: {schema.get('input_schema')}")
+            logger.error(f"===========================================")
 
             # 7. Get LLM provider
             provider_type = agent.model_config.get("provider", "anthropic")
@@ -107,7 +117,17 @@ class AgentExecutionService:
             provider = LLMProviderFactory.create_provider(provider_type, api_key)
 
             try:
-                # 8. Agentic loop - continue until LLM responds without calling tools
+                # 8. Build enhanced system prompt with tool descriptions
+                enhanced_instructions = self._build_enhanced_system_prompt(agent.instructions, tool_schemas)
+
+                # DEBUG: Log enhanced system prompt
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"========== ENHANCED SYSTEM PROMPT ==========")
+                logger.error(enhanced_instructions)
+                logger.error(f"==========================================")
+
+                # 9. Agentic loop - continue until LLM responds without calling tools
                 max_iterations = 5
                 iteration = 0
                 conversation_messages = history.copy()
@@ -125,7 +145,7 @@ class AgentExecutionService:
                         model=agent.model_config.get("model"),
                         messages=conversation_messages,
                         tools=tool_schemas,
-                        system=agent.instructions,
+                        system=enhanced_instructions,
                         temperature=agent.model_config.get("temperature", 0.7),
                         max_tokens=agent.model_config.get("max_tokens", 4096),
                     ):
@@ -180,39 +200,97 @@ class AgentExecutionService:
                         final_response_content = assistant_content
                         break
 
-                    # Build assistant message with tool_use blocks
-                    assistant_message_content = []
+                    # If tools were called, complete this message before continuing
+                    # This creates a separate message bubble for this thinking/tool-calling iteration
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"ITERATION {iteration}: tool_uses={len(tool_uses)}, assistant_content='{assistant_content[:100] if assistant_content else 'EMPTY'}'")
+
                     if assistant_content:
-                        assistant_message_content.append({"type": "text", "text": assistant_content})
+                        logger.error(f"Sending message_complete after iteration {iteration} with content")
+                        yield ExecutionEvent("message_complete", message_id=str(uuid.uuid4()))
+                    else:
+                        logger.error(f"NOT sending message_complete - no assistant content in iteration {iteration}")
 
-                    for tool_use in tool_uses:
-                        assistant_message_content.append({
-                            "type": "tool_use",
-                            "id": tool_use["id"],
-                            "name": tool_use["name"],
-                            "input": tool_use["input"],
+                    # Build messages in provider-specific format
+                    if provider_type == "anthropic":
+                        # Anthropic format: content blocks with tool_use
+                        assistant_message_content = []
+                        if assistant_content:
+                            assistant_message_content.append({"type": "text", "text": assistant_content})
+
+                        for tool_use in tool_uses:
+                            assistant_message_content.append({
+                                "type": "tool_use",
+                                "id": tool_use["id"],
+                                "name": tool_use["name"],
+                                "input": tool_use["input"],
+                            })
+
+                        conversation_messages.append({
+                            "role": "assistant",
+                            "content": assistant_message_content,
                         })
 
-                    conversation_messages.append({
-                        "role": "assistant",
-                        "content": assistant_message_content,
-                    })
+                        # Anthropic format: user message with tool_result blocks
+                        tool_results_content = []
+                        for tool_use in tool_uses:
+                            tool_result = tool_use["result"]
+                            if isinstance(tool_result, dict) and not tool_result.get("success", True):
+                                result_str = tool_result.get("error", str(tool_result))
+                            else:
+                                result_str = str(tool_result.get("result", tool_result))
 
-                    # Build user message with tool_result blocks
-                    tool_results_content = []
-                    for tool_use in tool_uses:
-                        # Format tool result as string
-                        result_str = str(tool_use["result"].get("result", tool_use["result"]))
-                        tool_results_content.append({
-                            "type": "tool_result",
-                            "tool_use_id": tool_use["id"],
-                            "content": result_str,
+                            tool_results_content.append({
+                                "type": "tool_result",
+                                "tool_use_id": tool_use["id"],
+                                "content": result_str,
+                            })
+
+                        conversation_messages.append({
+                            "role": "user",
+                            "content": tool_results_content,
                         })
 
-                    conversation_messages.append({
-                        "role": "user",
-                        "content": tool_results_content,
-                    })
+                    else:
+                        # OpenAI/Google format: assistant message with tool_calls
+                        import json
+
+                        tool_calls_array = []
+                        for tool_use in tool_uses:
+                            tool_calls_array.append({
+                                "id": tool_use["id"],
+                                "type": "function",
+                                "function": {
+                                    "name": tool_use["name"],
+                                    "arguments": json.dumps(tool_use["input"]),
+                                }
+                            })
+
+                        assistant_msg = {
+                            "role": "assistant",
+                            "tool_calls": tool_calls_array,
+                        }
+                        if assistant_content:
+                            assistant_msg["content"] = assistant_content
+                        else:
+                            assistant_msg["content"] = None
+
+                        conversation_messages.append(assistant_msg)
+
+                        # OpenAI/Google format: separate tool messages for each result
+                        for tool_use in tool_uses:
+                            tool_result = tool_use["result"]
+                            if isinstance(tool_result, dict) and not tool_result.get("success", True):
+                                result_str = tool_result.get("error", str(tool_result))
+                            else:
+                                result_str = str(tool_result.get("result", tool_result))
+
+                            conversation_messages.append({
+                                "role": "tool",
+                                "tool_call_id": tool_use["id"],
+                                "content": result_str,
+                            })
 
                     # Continue loop to get next LLM response
 
@@ -274,12 +352,22 @@ class AgentExecutionService:
 
     async def _get_tool_schemas(self, agent: Agent) -> list[dict[str, Any]]:
         """Get tool schemas for agent's enabled tools."""
+        import logging
+        logger = logging.getLogger(__name__)
+
         tool_schemas = []
 
         for integration in agent.integrations:
             for tool in integration.tools:
                 if tool.is_enabled:
-                    tool_schemas.append(tool.tool_schema)
+                    # Build schema dynamically - description comes from tool.description, not tool_schema
+                    schema = {
+                        "name": tool.tool_schema.get("name", tool.name),
+                        "description": tool.description or tool.tool_schema.get("description", ""),
+                        "input_schema": tool.tool_schema.get("input_schema", {"type": "object", "properties": {}}),
+                    }
+                    tool_schemas.append(schema)
+                    logger.info(f"Adding tool schema for LLM: {tool.name} -> {schema}")
 
         return tool_schemas
 
@@ -288,6 +376,8 @@ class AgentExecutionService:
         Register all enabled tools for the agent in the tool registry.
         Creates tool instances from database models and registers them.
         """
+        import logging
+        logger = logging.getLogger(__name__)
         from app.tools.factory import ToolFactory
 
         # Clear any existing tools for this agent (in case of re-registration)
@@ -297,6 +387,7 @@ class AgentExecutionService:
                 if tool.is_enabled:
                     # Get tool name from schema
                     tool_name = tool.tool_schema.get("name", str(tool.id))
+                    logger.info(f"Registering tool: {tool_name}, schema={tool.tool_schema}")
 
                     # Get API key for LLM tools
                     api_key = None
@@ -341,3 +432,40 @@ class AgentExecutionService:
             return settings.google_api_key or ""
 
         raise ValueError(f"No API key found for provider: {provider_type}")
+
+    def _build_enhanced_system_prompt(self, base_instructions: str, tool_schemas: list[dict[str, Any]]) -> str:
+        """
+        Build enhanced system prompt that includes tool descriptions.
+        This helps the LLM understand what tools are available and their required parameters.
+        """
+        if not tool_schemas:
+            return base_instructions
+
+        tools_section = "\n\n# Available Tools\n\nYou have access to the following tools:\n\n"
+
+        for tool_schema in tool_schemas:
+            tool_name = tool_schema.get("name", "unknown")
+            tool_description = tool_schema.get("description", "No description")
+            input_schema = tool_schema.get("input_schema", {})
+            properties = input_schema.get("properties", {})
+            required_fields = input_schema.get("required", [])
+
+            tools_section += f"## {tool_name}\n"
+            tools_section += f"{tool_description}\n\n"
+
+            if properties:
+                tools_section += "**Parameters:**\n"
+                for param_name, param_info in properties.items():
+                    param_type = param_info.get("type", "string")
+                    param_desc = param_info.get("description", "")
+                    is_required = param_name in required_fields
+                    required_marker = " (REQUIRED)" if is_required else " (optional)"
+
+                    tools_section += f"- `{param_name}` ({param_type}){required_marker}: {param_desc}\n"
+                tools_section += "\n"
+            else:
+                tools_section += "No parameters required.\n\n"
+
+        tools_section += "\n**IMPORTANT:** Always provide all REQUIRED parameters when calling tools. Do not call a tool with empty input `{}` if it has required parameters.\n"
+
+        return base_instructions + tools_section

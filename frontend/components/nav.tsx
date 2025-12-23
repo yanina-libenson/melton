@@ -108,6 +108,12 @@ export function Nav() {
           <div className="flex min-w-[200px] items-center justify-end gap-4">
             <LanguageSwitcher />
             <Link
+              href="/conversations"
+              className="text-muted-foreground hover:text-foreground text-sm whitespace-nowrap transition-colors"
+            >
+              Conversations
+            </Link>
+            <Link
               href="/settings"
               className="text-muted-foreground hover:text-foreground text-sm whitespace-nowrap transition-colors"
             >

@@ -8,6 +8,7 @@ import httpx
 from app.llm.factory import LLMProviderFactory
 from app.tools.base_tool import BaseTool
 from app.utils.encryption import encryption_service
+from app.utils.output_transformer import OutputTransformer
 
 
 class APITool(BaseTool):
@@ -24,6 +25,10 @@ class APITool(BaseTool):
         self.auth_type = config.get("authentication", "none")
         self.timeout = config.get("timeout", 30)
 
+        # Output transformation settings
+        self.output_mode = config.get("output_mode", "full")  # "full", "extract", "llm"
+        self.output_mapping = config.get("output_mapping", {})
+
         # LLM enhancement settings
         self.llm_enhanced = config.get("llm_enhanced", False)
         self.llm_provider = config.get("llm_provider")
@@ -33,45 +38,123 @@ class APITool(BaseTool):
         self.llm_post_instructions = config.get("llm_post_instructions")
 
     async def execute(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        """Execute the API tool with authentication and optional LLM enhancement."""
+        """Execute the API tool with authentication and optional output transformation."""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"APITool.execute called: name={self.name}, input={input_data}, endpoint={self.endpoint}")
+
         try:
-            # Pre-process with LLM if enabled
-            if self.llm_enhanced and self.llm_pre_instructions:
-                input_data = await self._preprocess_with_llm(input_data)
+            # Validate required parameters from tool schema
+            validation_error = self._validate_required_params(input_data)
+            if validation_error:
+                logger.error(f"APITool validation failed: {validation_error}")
+                return {"success": False, "error": validation_error}
 
             # Make API call with auth
-            result = await self._make_api_call(input_data)
+            api_response = await self._make_api_call(input_data)
 
-            # Post-process with LLM if enabled
-            if self.llm_enhanced and self.llm_post_instructions:
-                result = await self._postprocess_with_llm(result)
+            # Apply output transformation based on mode
+            if self.output_mode == "full":
+                result = api_response
 
+            elif self.output_mode == "extract":
+                result = OutputTransformer.transform(
+                    api_response,
+                    output_mode="extract",
+                    output_mapping=self.output_mapping
+                )
+
+            elif self.output_mode == "llm":
+                # LLM transformation for complex cases
+                if self.llm_post_instructions:
+                    result = await self._postprocess_with_llm(api_response)
+                else:
+                    result = api_response
+
+            else:
+                # Default to full response
+                result = api_response
+
+            logger.info(f"APITool.execute succeeded: output={result}")
             return {"success": True, "data": result}
 
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            error_msg = str(e) if str(e) else f"{type(e).__name__}: {repr(e)}"
+            logger.error(f"APITool.execute failed: {error_msg}", exc_info=True)
+            return {"success": False, "error": error_msg}
 
     async def _make_api_call(self, input_data: dict[str, Any]) -> Any:
         """Make HTTP request with authentication."""
-        headers = await self._build_headers()
-        url = self._build_url(input_data)
+        import logging
+        logger = logging.getLogger(__name__)
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        headers = await self._build_headers()
+        url, remaining_params = self._build_url(input_data)
+
+        logger.error(f"API CALL - Endpoint template: {self.endpoint}")
+        logger.error(f"API CALL - Input data: {input_data}")
+        logger.error(f"API CALL - Final URL: {url}")
+        logger.error(f"API CALL - Remaining params: {remaining_params}")
+        logger.error(f"API CALL - Headers: {headers}")
+
+        # Force HTTP/1.1 - some servers (like wttr.in) behave differently with HTTP/2
+        async with httpx.AsyncClient(
+            timeout=self.timeout,
+            follow_redirects=True,
+            http1=True,
+            http2=False
+        ) as client:
             # Retry logic for OAuth token refresh
             for attempt in range(2):
                 try:
+                    # Manually build request to prevent httpx from adding unwanted headers
                     if self.method == "GET":
-                        response = await client.get(url, headers=headers, params=input_data)
+                        # Build URL with query params
+                        request = client.build_request(
+                            method="GET",
+                            url=url,
+                            headers=headers,
+                            params=remaining_params
+                        )
                     elif self.method == "POST":
-                        response = await client.post(url, headers=headers, json=input_data)
+                        request = client.build_request(
+                            method="POST",
+                            url=url,
+                            headers=headers,
+                            json=input_data
+                        )
                     elif self.method == "PUT":
-                        response = await client.put(url, headers=headers, json=input_data)
+                        request = client.build_request(
+                            method="PUT",
+                            url=url,
+                            headers=headers,
+                            json=input_data
+                        )
                     elif self.method == "DELETE":
-                        response = await client.delete(url, headers=headers)
+                        request = client.build_request(
+                            method="DELETE",
+                            url=url,
+                            headers=headers
+                        )
                     elif self.method == "PATCH":
-                        response = await client.patch(url, headers=headers, json=input_data)
+                        request = client.build_request(
+                            method="PATCH",
+                            url=url,
+                            headers=headers,
+                            json=input_data
+                        )
                     else:
                         raise ValueError(f"Unsupported HTTP method: {self.method}")
+
+                    # Remove auto-added headers that some APIs (like wttr.in) don't like
+                    # These headers can trigger anti-bot measures
+                    if 'accept-encoding' in request.headers:
+                        del request.headers['accept-encoding']
+                    if 'connection' in request.headers:
+                        del request.headers['connection']
+
+                    # Send the manually constructed request
+                    response = await client.send(request)
 
                     # Check for 401 and refresh token if OAuth
                     if response.status_code == 401 and self.auth_type == "oauth" and attempt == 0:
@@ -80,7 +163,30 @@ class APITool(BaseTool):
                         continue
 
                     response.raise_for_status()
-                    return response.json() if response.content else {}
+
+                    # Log response details for debugging
+                    logger.error(f"API RESPONSE - Status: {response.status_code}")
+                    logger.error(f"API RESPONSE - Content-Type: {response.headers.get('content-type')}")
+                    logger.error(f"API RESPONSE - Response Headers: {dict(response.headers)}")
+                    logger.error(f"API RESPONSE - Request Headers Sent: {dict(response.request.headers)}")
+
+                    # Try to parse as JSON
+                    if response.content:
+                        try:
+                            return response.json()
+                        except Exception as json_err:
+                            # Log the actual response content for debugging
+                            content_preview = response.text[:500] if response.text else "(empty)"
+                            logger.error(
+                                f"Failed to parse API response as JSON. "
+                                f"URL: {url}, Status: {response.status_code}, "
+                                f"Content-Type: {response.headers.get('content-type')}, "
+                                f"Content preview: {content_preview}"
+                            )
+                            raise ValueError(
+                                f"API returned non-JSON response (status {response.status_code}): {content_preview}"
+                            ) from json_err
+                    return {}
 
                 except httpx.HTTPStatusError as e:
                     if e.response.status_code == 401 and attempt == 0:
@@ -89,7 +195,13 @@ class APITool(BaseTool):
 
     async def _build_headers(self) -> dict[str, str]:
         """Build HTTP headers with authentication."""
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Accept": "application/json",
+        }
+
+        # Only set Content-Type for requests with body (POST, PUT, PATCH)
+        if self.method in ["POST", "PUT", "PATCH"]:
+            headers["Content-Type"] = "application/json"
 
         if self.auth_type == "api-key":
             key_header = self.config.get("api_key_header", "X-API-Key")
@@ -158,13 +270,55 @@ class APITool(BaseTool):
             self.config["access_token"] = encryption_service.encrypt(new_access_token)
             self.config["token_expiry"] = datetime.utcnow() + timedelta(seconds=expiry_seconds)
 
-    def _build_url(self, input_data: dict[str, Any]) -> str:
-        """Build URL with path parameters."""
+    def _build_url(self, input_data: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+        """
+        Build URL with path parameters and return remaining params for query string.
+
+        Returns:
+            Tuple of (url, remaining_params) where remaining_params are inputs
+            that weren't used in URL templating
+        """
         url = self.endpoint
-        # Simple path parameter substitution
+        used_keys = set()
+
+        # Replace template variables
         for key, value in input_data.items():
-            url = url.replace(f"{{{key}}}", str(value))
-        return url
+            template = f"{{{key}}}"
+            if template in url:
+                url = url.replace(template, str(value))
+                used_keys.add(key)
+
+        # Return remaining params that weren't used in URL template
+        remaining_params = {k: v for k, v in input_data.items() if k not in used_keys}
+        return url, remaining_params
+
+    def _validate_required_params(self, input_data: dict[str, Any]) -> str | None:
+        """
+        Validate that all required parameters are provided.
+        Returns error message if validation fails, None if valid.
+        """
+        # Get required fields from tool config's input_schema
+        input_schema = self.config.get("input_schema", {})
+        required_fields = input_schema.get("required", [])
+        properties = input_schema.get("properties", {})
+
+        if not required_fields:
+            return None  # No required fields
+
+        missing_fields = []
+        for field in required_fields:
+            if field not in input_data or not input_data[field]:
+                field_desc = properties.get(field, {}).get("description", field)
+                missing_fields.append(f"{field} ({field_desc})")
+
+        if missing_fields:
+            return (
+                f"Missing required parameters: {', '.join(missing_fields)}. "
+                f"You must provide these parameters to call this tool. "
+                f"Do not call the tool with empty input {{}}."
+            )
+
+        return None
 
     async def _preprocess_with_llm(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """Use LLM to preprocess user input into API parameters (stateless)."""

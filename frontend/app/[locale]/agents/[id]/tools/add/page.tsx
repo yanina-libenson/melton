@@ -24,7 +24,15 @@ export default function AddToolPage({
   )
 
   function handleSelectIntegration(platformId: string) {
-    router.push(`/agents/${resolvedParams.id}/tools/integration/${platformId}`)
+    // Route to new simplified API tool page
+    if (platformId === 'api-tool') {
+      router.push(`/${resolvedParams.locale}/agents/${resolvedParams.id}/tools/add-api`)
+    } else {
+      // Route to old integration page for LLM tools, sub-agents, and platform integrations
+      router.push(
+        `/${resolvedParams.locale}/agents/${resolvedParams.id}/tools/integration/${platformId}`
+      )
+    }
   }
 
   return (

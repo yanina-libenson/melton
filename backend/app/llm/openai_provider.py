@@ -25,6 +25,10 @@ class OpenAIProvider(BaseLLMProvider):
         max_tokens: int = 4096,
     ) -> AsyncIterator[StreamEvent]:
         """Stream GPT response with function calling."""
+        import json
+        import logging
+        logger = logging.getLogger(__name__)
+
         # Convert tools to OpenAI format
         openai_tools = [self.convert_tool_schema(tool) for tool in tools]
 
@@ -42,6 +46,9 @@ class OpenAIProvider(BaseLLMProvider):
             stream=True,
         )
 
+        # Track tool calls being built up (OpenAI streams them in chunks)
+        tool_calls_buffer: dict[int, dict[str, Any]] = {}
+
         async for chunk in stream:
             delta = chunk.choices[0].delta if chunk.choices else None
 
@@ -49,16 +56,47 @@ class OpenAIProvider(BaseLLMProvider):
                 yield StreamEvent(event_type="content_delta", delta=delta.content)
 
             if delta and delta.tool_calls:
-                for tool_call in delta.tool_calls:
-                    if tool_call.function:
-                        import json
+                for tool_call_chunk in delta.tool_calls:
+                    index = tool_call_chunk.index
+
+                    # Initialize buffer for this tool call if needed
+                    if index not in tool_calls_buffer:
+                        tool_calls_buffer[index] = {
+                            "id": tool_call_chunk.id or "",
+                            "name": "",
+                            "arguments": "",
+                        }
+
+                    # Accumulate the chunks
+                    if tool_call_chunk.id:
+                        tool_calls_buffer[index]["id"] = tool_call_chunk.id
+                    if tool_call_chunk.function:
+                        if tool_call_chunk.function.name:
+                            tool_calls_buffer[index]["name"] = tool_call_chunk.function.name
+                        if tool_call_chunk.function.arguments:
+                            tool_calls_buffer[index]["arguments"] += tool_call_chunk.function.arguments
+
+            # Check if stream is done (finish_reason is set)
+            if chunk.choices and chunk.choices[0].finish_reason == "tool_calls":
+                # Parse and yield all accumulated tool calls
+                for index, tool_data in tool_calls_buffer.items():
+                    try:
+                        parsed_args = json.loads(tool_data["arguments"]) if tool_data["arguments"] else {}
+                        logger.info(f"OpenAI tool call: {tool_data['name']} with args {parsed_args}")
 
                         yield StreamEvent(
                             event_type="tool_use_start",
-                            tool_name=tool_call.function.name,
-                            tool_input=json.loads(tool_call.function.arguments)
-                            if tool_call.function.arguments
-                            else {},
+                            tool_name=tool_data["name"],
+                            tool_input=parsed_args,
+                            tool_use_id=tool_data["id"],
+                        )
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse tool arguments: {tool_data['arguments']}, error: {e}")
+                        yield StreamEvent(
+                            event_type="tool_use_start",
+                            tool_name=tool_data["name"],
+                            tool_input={},
+                            tool_use_id=tool_data["id"],
                         )
 
     async def generate_without_tools(

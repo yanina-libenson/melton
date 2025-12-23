@@ -200,6 +200,32 @@ class APIClient {
     })
   }
 
+  async testTool(data: {
+    endpoint: string
+    method: string
+    authentication: string
+    authConfig: Record<string, string>
+    testInput: Record<string, string>
+    outputMode: string
+    outputMapping: Record<string, string>
+    llmConfig?: { instructions: string }
+  }): Promise<{
+    success: boolean
+    output: unknown
+    error?: string
+    debugInfo?: {
+      executionTimeMs: number
+      statusCode: number
+      urlCalled: string
+      rawResponse?: unknown
+    }
+  }> {
+    return this.request(`${API_VERSION}/tools/test`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
   // User API Keys endpoints
   async getUserApiKeys(): Promise<{
     openai: { provider: string; is_configured: boolean; masked_key: string | null }
@@ -237,6 +263,55 @@ class APIClient {
   createPlaygroundConnection(agentId: string): WebSocket {
     const wsURL = this.baseURL.replace('http', 'ws')
     return new WebSocket(`${wsURL}${API_VERSION}/playground/${agentId}`)
+  }
+
+  // Conversations endpoints
+  async getConversations(
+    limit = 50,
+    offset = 0
+  ): Promise<{
+    conversations: Array<{
+      id: string
+      agent_id: string
+      agent_name: string
+      channel_type: string
+      message_count: number
+      preview: string
+      created_at: string
+      updated_at: string
+    }>
+    total: number
+  }> {
+    return this.request(`${API_VERSION}/conversations?limit=${limit}&offset=${offset}`)
+  }
+
+  async getConversation(conversationId: string): Promise<{
+    id: string
+    agent_id: string
+    agent_name: string
+    agent_instructions: string
+    agent_model_config: Record<string, unknown>
+    channel_type: string
+    created_at: string
+    updated_at: string
+    messages: Array<{
+      id: string
+      role: string
+      content: string
+      tool_calls: Array<{
+        tool_name: string
+        input: Record<string, unknown>
+        output: Record<string, unknown>
+      }>
+      created_at: string
+    }>
+  }> {
+    return this.request(`${API_VERSION}/conversations/${conversationId}`)
+  }
+
+  // Generic GET method for custom endpoints
+  async get<T = unknown>(endpoint: string): Promise<T> {
+    return this.request(`${API_VERSION}${endpoint}`)
   }
 }
 

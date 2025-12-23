@@ -13,6 +13,8 @@ import { Agent, Message } from '@/lib/types'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import Image from 'next/image'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 export default function AgentPage({ params }: { params: Promise<{ id: string }> }) {
   const t = useTranslations('agentDetail')
@@ -438,7 +440,11 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
                               : 'bg-card text-foreground border-border shadow-soft-xs border'
                           }`}
                         >
-                          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                          <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {message.content}
+                            </ReactMarkdown>
+                          </div>
 
                           {message.toolCalls && message.toolCalls.length > 0 && (
                             <div className="border-border mt-3 border-t pt-3">
@@ -464,7 +470,11 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
                 {playground.currentResponse && (
                   <div className="flex justify-start">
                     <div className="bg-card text-foreground border-border shadow-soft-xs max-w-[85%] rounded-xl border px-5 py-3">
-                      <p className="text-sm whitespace-pre-wrap">{playground.currentResponse}</p>
+                      <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {playground.currentResponse}
+                        </ReactMarkdown>
+                      </div>
                     </div>
                   </div>
                 )}

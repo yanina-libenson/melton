@@ -43,8 +43,38 @@ class AnthropicProvider(BaseLLMProvider):
         max_tokens: int = 4096,
     ) -> AsyncIterator[StreamEvent]:
         """Stream Claude response with tool calling."""
+        import logging
+        logger = logging.getLogger(__name__)
+
         # Convert tools to Anthropic format
         anthropic_tools = [self.convert_tool_schema(tool) for tool in tools]
+        logger.info(f"Sending {len(anthropic_tools)} tools to Anthropic API:")
+        for tool in anthropic_tools:
+            logger.info(f"  Tool: {tool['name']}")
+            logger.info(f"  Input schema: {tool.get('input_schema', {})}")
+
+        # DEBUG: Print to stdout to ensure we see it
+        print(f"\n{'='*80}")
+        print(f"ANTHROPIC API CALL - Sending {len(anthropic_tools)} tools:")
+        for tool in anthropic_tools:
+            print(f"  Tool: {tool['name']}")
+            print(f"  Description: {tool.get('description', 'N/A')}")
+            print(f"  Input schema: {tool.get('input_schema', {})}")
+        print(f"{'='*80}\n")
+
+        # DEBUG: Log the messages being sent
+        logger.error(f"========== MESSAGES SENT TO CLAUDE ==========")
+        logger.error(f"System prompt (first 500 chars): {(system or '')[:500]}")
+        logger.error(f"Number of messages: {len(messages)}")
+        for i, msg in enumerate(messages):
+            logger.error(f"Message {i}: role={msg.get('role')}, content type={type(msg.get('content'))}")
+            if isinstance(msg.get('content'), str):
+                logger.error(f"  Content (first 200 chars): {msg.get('content')[:200]}")
+            elif isinstance(msg.get('content'), list):
+                logger.error(f"  Content blocks: {len(msg.get('content'))}")
+                for j, block in enumerate(msg.get('content', [])):
+                    logger.error(f"    Block {j}: type={block.get('type')}")
+        logger.error(f"============================================")
 
         async with self.client.messages.stream(
             model=model,
@@ -64,6 +94,14 @@ class AnthropicProvider(BaseLLMProvider):
                     and hasattr(event.content_block, "type")
                     and event.content_block.type == "tool_use"
                 ):
+                    # DEBUG: Log what Claude is actually sending
+                    logger.error(f"========== CLAUDE CALLED TOOL ==========")
+                    logger.error(f"Tool name: {event.content_block.name}")
+                    logger.error(f"Tool input: {event.content_block.input}")
+                    logger.error(f"Tool input type: {type(event.content_block.input)}")
+                    logger.error(f"Tool ID: {event.content_block.id}")
+                    logger.error(f"=======================================")
+
                     yield StreamEvent(
                         event_type="tool_use_start",
                         tool_name=event.content_block.name,
