@@ -53,24 +53,27 @@ class APITool(BaseTool):
             # Make API call with auth
             api_response = await self._make_api_call(input_data)
 
-            # Apply output transformation based on mode
-            if self.output_mode == "full":
-                result = api_response
+            # Log the raw API response for debugging
+            logger.error(f"[DEBUG] Raw API response for {self.name}: {api_response}")
 
+            # If response is plain text (not JSON), return it as-is without transformation
+            if isinstance(api_response, str):
+                result = api_response
+            # Apply output transformation only for dict/list responses
+            elif self.output_mode == "full":
+                result = api_response
             elif self.output_mode == "extract":
                 result = OutputTransformer.transform(
                     api_response,
                     output_mode="extract",
                     output_mapping=self.output_mapping
                 )
-
             elif self.output_mode == "llm":
                 # LLM transformation for complex cases
                 if self.llm_post_instructions:
                     result = await self._postprocess_with_llm(api_response)
                 else:
                     result = api_response
-
             else:
                 # Default to full response
                 result = api_response
@@ -91,72 +94,27 @@ class APITool(BaseTool):
         headers = await self._build_headers()
         url, remaining_params = self._build_url(input_data)
 
-        logger.error(f"API CALL - Endpoint template: {self.endpoint}")
-        logger.error(f"API CALL - Input data: {input_data}")
-        logger.error(f"API CALL - Final URL: {url}")
-        logger.error(f"API CALL - Remaining params: {remaining_params}")
-        logger.error(f"API CALL - Headers: {headers}")
+        logger.error(f"[DEBUG] Making API call to: {url} with params: {remaining_params}")
 
-        # Force HTTP/1.1 - some servers (like wttr.in) behave differently with HTTP/2
-        async with httpx.AsyncClient(
-            timeout=self.timeout,
-            follow_redirects=True,
-            http1=True,
-            http2=False
-        ) as client:
+        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
             # Retry logic for OAuth token refresh
             for attempt in range(2):
                 try:
-                    # Manually build request to prevent httpx from adding unwanted headers
+                    # Make HTTP request based on method
                     if self.method == "GET":
-                        # Build URL with query params
-                        request = client.build_request(
-                            method="GET",
-                            url=url,
-                            headers=headers,
-                            params=remaining_params
-                        )
+                        response = await client.get(url, headers=headers, params=remaining_params)
                     elif self.method == "POST":
-                        request = client.build_request(
-                            method="POST",
-                            url=url,
-                            headers=headers,
-                            json=input_data
-                        )
+                        response = await client.post(url, headers=headers, json=input_data)
                     elif self.method == "PUT":
-                        request = client.build_request(
-                            method="PUT",
-                            url=url,
-                            headers=headers,
-                            json=input_data
-                        )
+                        response = await client.put(url, headers=headers, json=input_data)
                     elif self.method == "DELETE":
-                        request = client.build_request(
-                            method="DELETE",
-                            url=url,
-                            headers=headers
-                        )
+                        response = await client.delete(url, headers=headers)
                     elif self.method == "PATCH":
-                        request = client.build_request(
-                            method="PATCH",
-                            url=url,
-                            headers=headers,
-                            json=input_data
-                        )
+                        response = await client.patch(url, headers=headers, json=input_data)
                     else:
                         raise ValueError(f"Unsupported HTTP method: {self.method}")
 
-                    # Remove auto-added headers that some APIs (like wttr.in) don't like
-                    # These headers can trigger anti-bot measures
-                    if 'accept-encoding' in request.headers:
-                        del request.headers['accept-encoding']
-                    if 'connection' in request.headers:
-                        del request.headers['connection']
-
-                    # Send the manually constructed request
-                    response = await client.send(request)
-
-                    # Check for 401 and refresh token if OAuth
+                    # Check for 401 and refresh OAuth token if needed
                     if response.status_code == 401 and self.auth_type == "oauth" and attempt == 0:
                         await self._refresh_oauth_token()
                         headers = await self._build_headers()
@@ -164,29 +122,14 @@ class APITool(BaseTool):
 
                     response.raise_for_status()
 
-                    # Log response details for debugging
-                    logger.error(f"API RESPONSE - Status: {response.status_code}")
-                    logger.error(f"API RESPONSE - Content-Type: {response.headers.get('content-type')}")
-                    logger.error(f"API RESPONSE - Response Headers: {dict(response.headers)}")
-                    logger.error(f"API RESPONSE - Request Headers Sent: {dict(response.request.headers)}")
-
-                    # Try to parse as JSON
+                    # Try to parse as JSON, otherwise return text
                     if response.content:
                         try:
                             return response.json()
-                        except Exception as json_err:
-                            # Log the actual response content for debugging
-                            content_preview = response.text[:500] if response.text else "(empty)"
-                            logger.error(
-                                f"Failed to parse API response as JSON. "
-                                f"URL: {url}, Status: {response.status_code}, "
-                                f"Content-Type: {response.headers.get('content-type')}, "
-                                f"Content preview: {content_preview}"
-                            )
-                            raise ValueError(
-                                f"API returned non-JSON response (status {response.status_code}): {content_preview}"
-                            ) from json_err
-                    return {}
+                        except Exception:
+                            # Not JSON - return as plain text
+                            return response.text
+                    return ""
 
                 except httpx.HTTPStatusError as e:
                     if e.response.status_code == 401 and attempt == 0:
@@ -195,11 +138,9 @@ class APITool(BaseTool):
 
     async def _build_headers(self) -> dict[str, str]:
         """Build HTTP headers with authentication."""
-        headers = {
-            "Accept": "application/json",
-        }
+        headers = {}
 
-        # Only set Content-Type for requests with body (POST, PUT, PATCH)
+        # Only set Content-Type for requests with body
         if self.method in ["POST", "PUT", "PATCH"]:
             headers["Content-Type"] = "application/json"
 
