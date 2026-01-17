@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiClient } from '@/lib/api/client'
-import type { Message } from '@/lib/types'
+import type { Message, FileAttachment } from '@/lib/types'
 
 interface PlaygroundEvent {
   type: string
@@ -143,7 +143,7 @@ export function usePlayground({
   }, [])
 
   const sendMessage = useCallback(
-    (content: string, explicitConversationId?: string) => {
+    (content: string, attachments?: FileAttachment[], explicitConversationId?: string) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
         if (onError) {
           onError('Not connected')
@@ -154,6 +154,7 @@ export function usePlayground({
       const message = {
         type: 'user_message',
         content,
+        attachments: attachments || [],
         conversation_id: explicitConversationId || conversationId || null,
       }
 
@@ -165,6 +166,7 @@ export function usePlayground({
           id: `msg-${Date.now()}`,
           role: 'user',
           content,
+          attachments,
           timestamp: new Date().toISOString(),
         })
       }

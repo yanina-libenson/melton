@@ -9,7 +9,8 @@ from sqlalchemy.orm import selectinload
 
 from app.models.agent import Agent
 from app.models.integration import Integration
-from app.schemas.agent import AgentCreate, AgentUpdate
+from app.schemas.agent import AgentCreate, AgentUpdate, ModelConfig
+from app.services.agent_defaults import build_agent_instructions
 
 
 class AgentService:
@@ -28,7 +29,7 @@ class AgentService:
             name=agent_data.name,
             instructions=agent_data.instructions,
             status=agent_data.status,
-            model_config=agent_data.llm_config.model_dump(),
+            model_config=agent_data.llm_model_config.model_dump(),
         )
 
         self.session.add(agent)
@@ -68,15 +69,26 @@ class AgentService:
         self, agent_id: uuid.UUID, agent_data: AgentUpdate
     ) -> Agent | None:
         """Update an existing agent."""
+        import logging
+        logger = logging.getLogger(__name__)
+
         agent = await self.get_agent_by_id(agent_id)
         if not agent:
             return None
 
-        update_data = agent_data.model_dump(exclude_unset=True)
+        update_data = agent_data.model_dump(exclude_unset=True, by_alias=True)
+        logger.error(f"🔧 Service update_data after model_dump: {update_data}")
 
-        # Convert model_config to dict if present
-        if "model_config" in update_data and update_data["model_config"]:
+        # Convert llm_model_config to model_config dict if present
+        if "llm_model_config" in update_data and update_data["llm_model_config"]:
+            logger.error(f"🔧 Found llm_model_config in update_data: {update_data['llm_model_config']}")
+            update_data["model_config"] = update_data["llm_model_config"].model_dump()
+            del update_data["llm_model_config"]
+        elif "model_config" in update_data and isinstance(update_data["model_config"], ModelConfig):
+            logger.error(f"🔧 Found model_config as ModelConfig instance: {update_data['model_config']}")
             update_data["model_config"] = update_data["model_config"].model_dump()
+
+        logger.error(f"🔧 Final update_data before setattr: {update_data}")
 
         for field, value in update_data.items():
             setattr(agent, field, value)

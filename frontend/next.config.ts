@@ -26,6 +26,10 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'cdn.simpleicons.org',
       },
+      {
+        protocol: 'https',
+        hostname: 'http2.mlstatic.com',
+      },
     ],
     dangerouslyAllowSVG: true,
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",

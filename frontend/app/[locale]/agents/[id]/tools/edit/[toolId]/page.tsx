@@ -42,6 +42,10 @@ export default function EditToolPage({
   const router = useRouter()
 
   const [tool, setTool] = useState<Tool | null>(null)
+  const [integration, setIntegration] = useState<{
+    id: string
+    config?: Record<string, unknown>
+  } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -58,12 +62,56 @@ export default function EditToolPage({
     { name: string; type: string; description: string }[]
   >([])
 
+  // API Configuration state (for API tools)
+  const [endpoint, setEndpoint] = useState('')
+  const [method, setMethod] = useState<'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'>('GET')
+  const [authType, setAuthType] = useState<'none' | 'api-key' | 'bearer' | 'basic'>('none')
+  const [authConfig, setAuthConfig] = useState<Record<string, string>>({})
+
   useEffect(() => {
     async function loadTool() {
       try {
         setIsLoading(true)
         const toolData = await apiClient.getTool(resolvedParams.toolId)
         setTool(toolData)
+
+        // Load integration to get API configuration
+        if (toolData.sourceId) {
+          const integrationData = await apiClient.getIntegration(toolData.sourceId)
+          setIntegration(integrationData)
+
+          // Populate API configuration from integration
+          if (toolData.toolType === 'api') {
+            setEndpoint((integrationData.config?.baseUrl as string) || '')
+            setMethod(
+              (integrationData.config?.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') ||
+                'GET'
+            )
+            setAuthType(
+              (integrationData.config?.authentication as 'none' | 'api-key' | 'bearer' | 'basic') ||
+                'none'
+            )
+
+            // Extract auth config
+            const newAuthConfig: Record<string, string> = {}
+            if (integrationData.config?.apiKeyHeader) {
+              newAuthConfig.apiKeyHeader = integrationData.config.apiKeyHeader as string
+            }
+            if (integrationData.config?.apiKeyValue) {
+              newAuthConfig.apiKeyValue = integrationData.config.apiKeyValue as string
+            }
+            if (integrationData.config?.bearerToken) {
+              newAuthConfig.bearerToken = integrationData.config.bearerToken as string
+            }
+            if (integrationData.config?.username) {
+              newAuthConfig.username = integrationData.config.username as string
+            }
+            if (integrationData.config?.password) {
+              newAuthConfig.password = integrationData.config.password as string
+            }
+            setAuthConfig(newAuthConfig)
+          }
+        }
 
         // Populate form
         setName(toolData.name)
@@ -120,6 +168,20 @@ export default function EditToolPage({
 
     setIsSaving(true)
     try {
+      // Update integration if it's an API tool
+      if (tool.toolType === 'api' && integration) {
+        const integrationConfig: Record<string, unknown> = {
+          authentication: authType,
+          baseUrl: endpoint,
+          method,
+          ...authConfig,
+        }
+
+        await apiClient.updateIntegration(integration.id, {
+          config: integrationConfig,
+        })
+      }
+
       // Build tool schema payload
       const toolSchemaPayload = {
         name: tool.toolSchema?.name || tool.name.toLowerCase().replace(/\s+/g, '_'),
@@ -289,6 +351,117 @@ export default function EditToolPage({
             />
           </div>
         </div>
+
+        {/* API Configuration (only for API tools) */}
+        {tool.toolType === 'api' && (
+          <div className="mb-12">
+            <h2 className="text-foreground mb-6 text-xl font-semibold">API Configuration</h2>
+
+            <div className="mb-6">
+              <Label htmlFor="endpoint" className="text-foreground mb-2 block text-sm font-medium">
+                Endpoint URL
+                <span className="text-muted-foreground ml-2 text-xs font-normal">
+                  (use {'{variable}'} for parameters)
+                </span>
+              </Label>
+              <Input
+                id="endpoint"
+                value={endpoint}
+                onChange={(e) => setEndpoint(e.target.value)}
+                placeholder="https://api.example.com/endpoint?param={param}"
+              />
+            </div>
+
+            <div className="mb-6 grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="method" className="text-foreground mb-2 block text-sm font-medium">
+                  HTTP Method
+                </Label>
+                <select
+                  id="method"
+                  value={method}
+                  onChange={(e) =>
+                    setMethod(e.target.value as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH')
+                  }
+                  className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                >
+                  <option value="GET">GET</option>
+                  <option value="POST">POST</option>
+                  <option value="PUT">PUT</option>
+                  <option value="DELETE">DELETE</option>
+                  <option value="PATCH">PATCH</option>
+                </select>
+              </div>
+
+              <div>
+                <Label
+                  htmlFor="authType"
+                  className="text-foreground mb-2 block text-sm font-medium"
+                >
+                  Authentication
+                </Label>
+                <select
+                  id="authType"
+                  value={authType}
+                  onChange={(e) => {
+                    setAuthType(e.target.value as 'none' | 'api-key' | 'bearer' | 'basic')
+                    setAuthConfig({})
+                  }}
+                  className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                >
+                  <option value="none">None</option>
+                  <option value="api-key">API Key</option>
+                  <option value="bearer">Bearer Token</option>
+                  <option value="basic">Basic Auth</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Auth Config Fields */}
+            {authType === 'api-key' && (
+              <div className="mb-6 space-y-4">
+                <Input
+                  placeholder="Header name (e.g., X-API-Key)"
+                  value={authConfig.apiKeyHeader || ''}
+                  onChange={(e) => setAuthConfig({ ...authConfig, apiKeyHeader: e.target.value })}
+                />
+                <Input
+                  type="password"
+                  placeholder="API Key value"
+                  value={authConfig.apiKeyValue || ''}
+                  onChange={(e) => setAuthConfig({ ...authConfig, apiKeyValue: e.target.value })}
+                />
+              </div>
+            )}
+
+            {authType === 'bearer' && (
+              <div className="mb-6">
+                <Input
+                  type="password"
+                  placeholder="Bearer token"
+                  value={authConfig.bearerToken || ''}
+                  onChange={(e) => setAuthConfig({ ...authConfig, bearerToken: e.target.value })}
+                />
+              </div>
+            )}
+
+            {authType === 'basic' && (
+              <div className="mb-6 grid grid-cols-2 gap-4">
+                <Input
+                  placeholder="Username"
+                  value={authConfig.username || ''}
+                  onChange={(e) => setAuthConfig({ ...authConfig, username: e.target.value })}
+                />
+                <Input
+                  type="password"
+                  placeholder="Password"
+                  value={authConfig.password || ''}
+                  onChange={(e) => setAuthConfig({ ...authConfig, password: e.target.value })}
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* LLM Configuration (only for LLM tools) */}
         {tool.toolType === 'llm' && (

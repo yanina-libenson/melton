@@ -10,6 +10,7 @@ import Image from 'next/image'
 import { useTranslations } from 'next-intl'
 import { apiClient } from '@/lib/api/client'
 import type { Agent, IntegrationSource } from '@/lib/types'
+import { PLATFORM_INTEGRATIONS } from '@/lib/platforms'
 
 export default function EditIntegrationPage({
   params,
@@ -118,7 +119,10 @@ export default function EditIntegrationPage({
                 integration.icon ||
                 (integration.type === 'custom-tool'
                   ? 'https://api.iconify.design/lucide/wrench.svg?color=%23888888'
-                  : '')
+                  : integration.platformId
+                    ? PLATFORM_INTEGRATIONS.find((p) => p.id === integration.platformId)?.icon ||
+                      'https://api.iconify.design/lucide/box.svg?color=%23888888'
+                    : 'https://api.iconify.design/lucide/box.svg?color=%23888888')
               }
               alt={integration.name}
               width={48}

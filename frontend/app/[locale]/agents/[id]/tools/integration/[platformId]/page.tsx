@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, use, useEffect } from 'react'
+import { useState, use, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,6 +20,8 @@ import { mockAgents } from '@/lib/mock-data'
 import Image from 'next/image'
 import { useTranslations } from 'next-intl'
 import { apiClient } from '@/lib/api/client'
+import { initiateOAuthFlow } from '@/lib/oauth'
+import { mutate } from 'swr'
 
 export default function IntegrationConfigPage({
   params,
@@ -43,6 +45,12 @@ export default function IntegrationConfigPage({
 
   const [authData, setAuthData] = useState<Record<string, string>>({})
   const [enabledToolIds, setEnabledToolIds] = useState<string[]>(tools.map((t) => t.id))
+
+  // OAuth state management
+  const [integrationId, setIntegrationId] = useState<string | null>(null)
+  const [oauthStatus, setOauthStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [oauthError, setOauthError] = useState<string | null>(null)
+  const isCreatingIntegration = useRef(false)
   const [step, setStep] = useState<'type-selection' | 'auth' | 'tools' | 'config'>(
     isCustomTool ? 'type-selection' : isLlmTool ? 'config' : isSubAgent ? 'config' : 'auth'
   )
@@ -121,8 +129,76 @@ export default function IntegrationConfigPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, enabledToolIds])
 
+  // Create integration for OAuth platforms when entering auth step
+  useEffect(() => {
+    async function createOAuthIntegration() {
+      if (
+        step === 'auth' &&
+        platform?.authType === 'oauth' &&
+        !integrationId &&
+        !isCreatingIntegration.current &&
+        oauthStatus === 'idle'
+      ) {
+        isCreatingIntegration.current = true
+        try {
+          const integrationData = {
+            agent_id: resolvedParams.id,
+            type: 'platform' as const,
+            name: platform.name,
+            description: platform.description,
+            config: {},
+            platform_id: resolvedParams.platformId,
+          }
+
+          const integration = await apiClient.createIntegration(integrationData)
+          setIntegrationId(integration.id)
+        } catch (error) {
+          console.error('Failed to create integration:', error)
+          toast.error('Failed to initialize OAuth integration')
+          isCreatingIntegration.current = false
+        }
+      }
+    }
+
+    createOAuthIntegration()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, platform?.authType, integrationId, oauthStatus])
+
   if (!platform) {
     return null
+  }
+
+  // Handle OAuth flow
+  async function handleOAuthConnect() {
+    if (!integrationId) {
+      toast.error('Integration not initialized')
+      return
+    }
+
+    setOauthStatus('loading')
+    setOauthError(null)
+
+    try {
+      const result = await initiateOAuthFlow(resolvedParams.platformId, integrationId)
+
+      if (result.success) {
+        setOauthStatus('success')
+        toast.success(`Successfully connected to ${platform?.name || 'platform'}!`)
+        // Auto-advance to tools step after brief delay
+        setTimeout(() => {
+          setStep('tools')
+        }, 1000)
+      } else {
+        setOauthStatus('error')
+        setOauthError(result.error || 'OAuth authorization failed')
+        toast.error(result.error || 'OAuth authorization failed')
+      }
+    } catch (error) {
+      setOauthStatus('error')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      setOauthError(errorMessage)
+      toast.error(errorMessage)
+    }
   }
 
   async function handleDiscoverEndpoints() {
@@ -323,8 +399,15 @@ export default function IntegrationConfigPage({
       }
     }
 
-    // Validate pre-built auth fields
-    if (platform.requiresAuth && !isCustomTool && !isSubAgent) {
+    // For OAuth platforms, check if authorization was successful
+    if (platform.authType === 'oauth') {
+      if (oauthStatus !== 'success') {
+        toast.error(t('errorOAuthRequired') || 'Please complete OAuth authorization first')
+        return
+      }
+    }
+    // Validate pre-built auth fields (for non-OAuth platforms)
+    else if (platform.requiresAuth && !isCustomTool && !isSubAgent) {
       const missingFields = platform.authFields.filter(
         (field) => field.required && !authData[field.name]?.trim()
       )
@@ -396,36 +479,43 @@ export default function IntegrationConfigPage({
     }
 
     try {
-      // Create integration
-      const integrationConfig: Record<string, unknown> = {
-        authentication: authType,
-        ...authData,
-      }
+      let integration
 
-      if (baseUrl) {
-        integrationConfig.baseUrl = baseUrl
-      }
+      // For OAuth platforms, use existing integration
+      if (platform?.authType === 'oauth' && integrationId) {
+        integration = { id: integrationId }
+      } else {
+        // Create integration for non-OAuth platforms
+        const integrationConfig: Record<string, unknown> = {
+          authentication: authType,
+          ...authData,
+        }
 
-      const integrationData: {
-        agent_id: string
-        type: 'platform' | 'custom-tool' | 'sub-agent'
-        name: string
-        description?: string
-        config: Record<string, unknown>
-        platform_id?: string
-      } = {
-        agent_id: resolvedParams.id,
-        type: isSubAgent ? 'sub-agent' : isCustomTool || isLlmTool ? 'custom-tool' : 'platform',
-        name: toolName || platform?.name || 'Integration',
-        description: toolDescription,
-        config: integrationConfig,
-      }
+        if (baseUrl) {
+          integrationConfig.baseUrl = baseUrl
+        }
 
-      if (!isCustomTool && !isLlmTool) {
-        integrationData.platform_id = resolvedParams.platformId
-      }
+        const integrationData: {
+          agent_id: string
+          type: 'platform' | 'custom-tool' | 'sub-agent'
+          name: string
+          description?: string
+          config: Record<string, unknown>
+          platform_id?: string
+        } = {
+          agent_id: resolvedParams.id,
+          type: isSubAgent ? 'sub-agent' : isCustomTool || isLlmTool ? 'custom-tool' : 'platform',
+          name: toolName || platform?.name || 'Integration',
+          description: toolDescription,
+          config: integrationConfig,
+        }
 
-      const integration = await apiClient.createIntegration(integrationData)
+        if (!isCustomTool && !isLlmTool) {
+          integrationData.platform_id = resolvedParams.platformId
+        }
+
+        integration = await apiClient.createIntegration(integrationData)
+      }
 
       // Create tools for the integration
       const enabledTools = tools.filter((t) => enabledToolIds.includes(t.id))
@@ -502,7 +592,9 @@ export default function IntegrationConfigPage({
           integration_id: integration.id,
           name: tool.name,
           description: tool.description || '',
-          tool_type: customToolType || 'api',
+          // Pre-built platform tools have undefined tool_type (schema comes from backend)
+          // Custom tools (api/llm/sub-agent) have explicit tool_type
+          tool_type: isCustomTool || isLlmTool || isSubAgent ? customToolType || 'api' : undefined,
           tool_schema: toolSchemaPayload,
           config: {
             endpoint: tool.endpoint,
@@ -517,6 +609,11 @@ export default function IntegrationConfigPage({
       }
 
       toast.success(t('successToolAdded', { name: toolName || platform?.name || 'Tool' }))
+
+      // Invalidate SWR cache for this agent to force refetch
+      await mutate(`/agents/${resolvedParams.id}`)
+
+      // Navigate back to agent page
       router.push(`/agents/${resolvedParams.id}`)
     } catch (error) {
       console.error('Failed to create integration:', error)
@@ -853,9 +950,101 @@ export default function IntegrationConfigPage({
                   )}
                 </div>
               </>
+            ) : platform.authType === 'oauth' ? (
+              <>
+                {/* OAuth Authorization */}
+                <div className="space-y-6 text-center">
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-semibold">{t('connectAccount')}</h3>
+                    <p className="text-muted-foreground text-sm">
+                      {t('oauthDescription', { platform: platform.name })}
+                    </p>
+                  </div>
+
+                  {oauthStatus === 'idle' && (
+                    <Button
+                      onClick={handleOAuthConnect}
+                      disabled={!integrationId}
+                      className="w-full max-w-sm"
+                    >
+                      {!integrationId
+                        ? t('initializing')
+                        : t('connectButton', { platform: platform.name })}
+                    </Button>
+                  )}
+
+                  {oauthStatus === 'loading' && (
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="border-primary h-8 w-8 animate-spin rounded-full border-b-2"></div>
+                      <p className="text-muted-foreground text-sm">{t('authorizingWait')}</p>
+                    </div>
+                  )}
+
+                  {oauthStatus === 'success' && (
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="rounded-full bg-green-100 p-3">
+                        <svg
+                          className="h-6 w-6 text-green-600"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      </div>
+                      <p className="text-sm font-medium text-green-600">{t('authSuccess')}</p>
+                    </div>
+                  )}
+
+                  {oauthStatus === 'error' && (
+                    <div className="space-y-4">
+                      <div className="flex flex-col items-center gap-4">
+                        <div className="rounded-full bg-red-100 p-3">
+                          <svg
+                            className="h-6 w-6 text-red-600"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-sm font-medium text-red-600">
+                            {t('authFailed') || 'Authorization failed'}
+                          </p>
+                          {oauthError && (
+                            <p className="text-muted-foreground mt-2 text-xs">{oauthError}</p>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        onClick={() => {
+                          setOauthStatus('idle')
+                          setOauthError(null)
+                        }}
+                        variant="outline"
+                        className="w-full max-w-sm"
+                      >
+                        {t('tryAgain') || 'Try Again'}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </>
             ) : (
               <>
-                {/* Pre-built Tool Auth Fields */}
+                {/* Pre-built Tool Auth Fields (Manual) */}
                 {platform.authFields.map((field) => (
                   <div key={field.name}>
                     <Label className="text-foreground mb-3 block text-sm font-medium">
@@ -1476,7 +1665,7 @@ export default function IntegrationConfigPage({
               </Button>
             )}
 
-            {step === 'auth' && (
+            {step === 'auth' && !(platform.authType === 'oauth' && oauthStatus === 'loading') && (
               <Button onClick={handleNextToTools} size="lg">
                 {t('next')}
               </Button>

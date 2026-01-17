@@ -1,11 +1,13 @@
 """FastAPI application entry point."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 
@@ -35,7 +37,7 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=settings.get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -64,13 +66,15 @@ async def health() -> dict[str, str]:
 
 
 # API routers
-from app.api.v1 import agents, conversations, integrations, playground, tools, user_settings
+from app.api.v1 import agents, conversations, integrations, llm_models, oauth, playground, tools, uploads, user_settings
 
 app.include_router(agents.router, prefix=f"{settings.api_v1_prefix}/agents", tags=["agents"])
 app.include_router(
     integrations.router, prefix=f"{settings.api_v1_prefix}/integrations", tags=["integrations"]
 )
 app.include_router(tools.router, prefix=f"{settings.api_v1_prefix}/tools", tags=["tools"])
+app.include_router(llm_models.router, prefix=f"{settings.api_v1_prefix}/llm-models", tags=["llm-models"])
+app.include_router(oauth.router, prefix=settings.api_v1_prefix)
 app.include_router(
     playground.router, prefix=f"{settings.api_v1_prefix}/playground", tags=["playground"]
 )
@@ -78,3 +82,9 @@ app.include_router(
     conversations.router, prefix=f"{settings.api_v1_prefix}/conversations", tags=["conversations"]
 )
 app.include_router(user_settings.router, prefix=settings.api_v1_prefix)
+app.include_router(uploads.router, prefix=settings.api_v1_prefix)
+
+# Mount static files for uploaded images
+UPLOADS_DIR = Path("uploads")
+UPLOADS_DIR.mkdir(exist_ok=True)
+app.mount("/api/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")

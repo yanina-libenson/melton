@@ -38,13 +38,28 @@ class Settings(BaseSettings):
     # Encryption
     encryption_key: str = "development-encryption-key-change-in-production"
 
+    # OAuth
+    frontend_url: str = "http://localhost:3000"
+    backend_url: str = "http://localhost:8000"
+    oauth_state_expiry_seconds: int = 600  # 10 minutes
+    mercadolibre_client_id: str | None = None
+    mercadolibre_client_secret: str | None = None
+
     # Environment
     environment: str = "development"
     debug: bool = True
 
+    # CORS
+    cors_origins: str | None = None
+
+    def get_cors_origins(self) -> list[str]:
+        """Parse CORS origins from comma-separated string or return defaults."""
+        if self.cors_origins:
+            return [origin.strip() for origin in self.cors_origins.split(",")]
+        return ["http://localhost:3000", "http://localhost:3001"]
+
     # API
     api_v1_prefix: str = "/api/v1"
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3001"]
 
     # Tool execution
     tool_execution_timeout: int = 30  # seconds

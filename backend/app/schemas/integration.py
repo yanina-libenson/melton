@@ -21,7 +21,7 @@ class IntegrationCreate(BaseModel):
     """Schema for creating a new integration."""
 
     agent_id: UUID = Field(..., description="Agent ID this integration belongs to")
-    type: Literal["platform", "custom-tool", "sub-agent"] = Field(..., description="Integration type")
+    type: Literal["platform", "custom-tool", "sub-agent", "builtin", "custom"] = Field(..., description="Integration type")
     platform_id: str | None = Field(None, description="Platform identifier (for platform integrations)")
     name: str = Field(..., min_length=1, max_length=255, description="Integration name")
     description: str | None = Field(None, description="Integration description")
@@ -53,7 +53,7 @@ class IntegrationResponse(BaseModel):
 
     id: UUID
     agent_id: UUID = Field(..., serialization_alias="agentId")
-    type: Literal["platform", "custom-tool", "sub-agent"]
+    type: Literal["platform", "custom-tool", "sub-agent", "builtin", "custom"]
     platform_id: str | None = Field(None, serialization_alias="platformId")
     name: str
     description: str | None

@@ -23,7 +23,7 @@ class AgentCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Agent name")
     instructions: str = Field(..., min_length=20, description="System instructions for the agent")
     status: Literal["active", "inactive", "draft"] = Field(default="draft", description="Agent status")
-    llm_config: ModelConfig = Field(..., description="LLM model configuration", alias="model_config")
+    llm_model_config: ModelConfig = Field(..., alias="model_config", description="LLM model configuration")
 
     model_config = {"populate_by_name": True, "json_schema_extra": {"examples": [{
         "name": "Customer Support Agent",
@@ -44,7 +44,7 @@ class AgentUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     instructions: str | None = Field(None, min_length=20)
     status: Literal["active", "inactive", "draft"] | None = None
-    llm_config: ModelConfig | None = Field(None, alias="model_config")
+    llm_model_config: ModelConfig | None = Field(None, alias="model_config")
 
     model_config = {"populate_by_name": True}
 
@@ -58,7 +58,7 @@ class AgentResponse(BaseModel):
     name: str
     instructions: str
     status: Literal["active", "inactive", "draft"]
-    llm_config: dict = Field(..., alias="model_config")
+    llm_model_config: dict = Field(..., alias="model_config", serialization_alias="model_config")
     created_at: datetime = Field(..., serialization_alias="createdAt")
     updated_at: datetime = Field(..., serialization_alias="updatedAt")
     integrations: list["IntegrationResponse"] = Field(default=[])

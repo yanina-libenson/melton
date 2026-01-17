@@ -21,7 +21,7 @@ class ToolCreate(BaseModel):
     integration_id: UUID = Field(..., description="Integration ID this tool belongs to")
     name: str = Field(..., min_length=1, max_length=255, description="Tool name")
     description: str | None = Field(None, description="Tool description")
-    tool_type: Literal["api", "llm", "sub-agent"] | None = Field(None, description="Tool type")
+    tool_type: Literal["api", "llm", "sub-agent", "builtin"] | None = Field(None, description="Tool type")
     tool_schema: dict = Field(default_factory=dict, description="Tool schema for LLM")
     config: dict = Field(default_factory=dict, description="Tool configuration")
     is_enabled: bool = Field(default=True, description="Whether the tool is enabled")
@@ -70,7 +70,7 @@ class ToolResponse(BaseModel):
     integration_id: UUID = Field(..., serialization_alias="sourceId")
     name: str
     description: str | None
-    tool_type: Literal["api", "llm", "sub-agent"] | None = Field(None, serialization_alias="toolType")
+    tool_type: Literal["api", "llm", "sub-agent", "builtin"] | None = Field(None, serialization_alias="toolType")
     tool_schema: dict = Field(..., serialization_alias="toolSchema")
     config: dict
     is_enabled: bool = Field(..., serialization_alias="isEnabled")

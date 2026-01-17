@@ -7,22 +7,46 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useAgent, useAgentMutations } from '@/lib/hooks/useAgents'
 import { usePlayground } from '@/lib/hooks/usePlayground'
-import { Agent, Message } from '@/lib/types'
+import { Agent, Message, FileAttachment, LLMModel } from '@/lib/types'
+import useSWR from 'swr'
+import { PLATFORM_INTEGRATIONS } from '@/lib/platforms'
+import { apiClient } from '@/lib/api/client'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import Image from 'next/image'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-export default function AgentPage({ params }: { params: Promise<{ id: string }> }) {
+export default function AgentPage({ params }: { params: Promise<{ id: string; locale: string }> }) {
   const t = useTranslations('agentDetail')
   const tTest = useTranslations('test')
   const tCommon = useTranslations('common')
   const resolvedParams = use(params)
   const router = useRouter()
   const isNewAgent = resolvedParams.id === 'new'
+
+  // Redirect to Agent Builder if user is creating a new agent
+  useEffect(() => {
+    if (isNewAgent) {
+      // Fetch all agents to find the Agent Builder
+      apiClient.getAgents().then((agents: Agent[]) => {
+        const agentBuilder = agents.find((a) => a.name === 'Agent Builder')
+        if (agentBuilder) {
+          // Redirect to Agent Builder chat
+          router.push(`/${resolvedParams.locale}/agents/${agentBuilder.id}?tab=test`)
+        }
+      })
+    }
+  }, [isNewAgent, router, resolvedParams.locale])
 
   // Fetch agent data from API (skip if new agent)
   const {
@@ -34,7 +58,17 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
 
   const { createAgent, updateAgent } = useAgentMutations()
 
-  const [activeTab, setActiveTab] = useState<'configure' | 'test'>('configure')
+  // Fetch available LLM models
+  const { data: llmModels, isLoading: modelsLoading } = useSWR<LLMModel[]>('/llm-models', () =>
+    apiClient.getLLMModels()
+  )
+
+  // Get initial tab from URL query param
+  const searchParams = new URLSearchParams(
+    typeof window !== 'undefined' ? window.location.search : ''
+  )
+  const initialTab = searchParams.get('tab') === 'test' ? 'test' : 'configure'
+  const [activeTab, setActiveTab] = useState<'configure' | 'test'>(initialTab)
 
   // Local state for editing
   const [agent, setAgent] = useState<Agent | null>(null)
@@ -43,7 +77,6 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
   // Initialize agent state when data is fetched or for new agent
   useEffect(() => {
     if (isNewAgent) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAgent({
         id: 'new',
         userId: '550e8400-e29b-41d4-a716-446655440000',
@@ -75,9 +108,9 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
     const hasChanges =
       agent.name !== fetchedAgent.name ||
       agent.instructions !== fetchedAgent.instructions ||
-      agent.status !== fetchedAgent.status
+      agent.status !== fetchedAgent.status ||
+      agent.model_config?.model !== fetchedAgent.model_config?.model
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHasUnsavedChanges(hasChanges)
   }, [agent, fetchedAgent, isNewAgent])
 
@@ -91,6 +124,9 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
     },
   ])
   const [inputMessage, setInputMessage] = useState('')
+  const [attachedFiles, setAttachedFiles] = useState<FileAttachment[]>([])
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // WebSocket playground connection (only when on test tab and not new agent)
@@ -138,12 +174,7 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
         name: agent.name,
         instructions: agent.instructions,
         status: agent.status,
-        model_config: {
-          provider: 'anthropic',
-          model: 'claude-sonnet-4-5-20250929',
-          temperature: 0.7,
-          max_tokens: 4096,
-        },
+        model_config: agent.model_config,
       })
 
       if (result.success) {
@@ -153,11 +184,15 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
         toast.error(result.error || 'Failed to create agent')
       }
     } else {
-      const result = await updateAgent(agent.id, {
+      const updateData = {
         name: agent.name,
         instructions: agent.instructions,
         status: agent.status,
-      })
+        model_config: agent.model_config,
+      }
+      console.log('📤 Frontend sending update:', JSON.stringify(updateData, null, 2))
+
+      const result = await updateAgent(agent.id, updateData)
 
       if (result.success) {
         toast.success(t('successSaved'))
@@ -169,11 +204,87 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
     }
   }
 
-  function handleSendMessage() {
-    if (!inputMessage.trim() || playground.isStreaming || isNewAgent) return
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files
+    if (!files || files.length === 0) return
 
-    playground.sendMessage(inputMessage)
+    setIsUploadingFiles(true)
+    const newAttachments: FileAttachment[] = []
+
+    try {
+      for (const file of Array.from(files)) {
+        // Only allow images
+        if (!file.type.startsWith('image/')) {
+          toast.error(`${file.name} is not an image file`)
+          continue
+        }
+
+        // Convert to data URL for preview
+        const reader = new FileReader()
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string)
+          reader.onerror = reject
+          reader.readAsDataURL(file)
+        })
+
+        // Upload to backend
+        const formData = new FormData()
+        formData.append('file', file)
+
+        const uploadResponse = await apiClient.uploadImage(formData)
+
+        if (uploadResponse.success) {
+          newAttachments.push({
+            id: uploadResponse.filename || `${Date.now()}-${Math.random()}`,
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            url: dataUrl, // For preview
+            publicUrl: uploadResponse.url, // For API calls
+          })
+        } else {
+          console.error('Upload failed:', uploadResponse)
+          toast.error(`Failed to upload ${file.name}`)
+        }
+      }
+
+      if (newAttachments.length > 0) {
+        setAttachedFiles((prev) => [...prev, ...newAttachments])
+        toast.success(
+          `${newAttachments.length} image${newAttachments.length > 1 ? 's' : ''} uploaded`
+        )
+      }
+    } catch (error: unknown) {
+      console.error('Failed to upload files:', error)
+      const errorMessage =
+        (error as { data?: { detail?: string }; message?: string })?.data?.detail ||
+        (error as { message?: string })?.message ||
+        'Failed to upload images'
+      toast.error(errorMessage)
+    } finally {
+      setIsUploadingFiles(false)
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
+  function handleRemoveFile(fileId: string) {
+    setAttachedFiles((prev) => prev.filter((f) => f.id !== fileId))
+  }
+
+  function handleSendMessage() {
+    if (
+      (!inputMessage.trim() && attachedFiles.length === 0) ||
+      playground.isStreaming ||
+      isNewAgent
+    )
+      return
+
+    playground.sendMessage(inputMessage, attachedFiles)
     setInputMessage('')
+    setAttachedFiles([])
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -280,6 +391,94 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
               />
             </div>
 
+            {/* Model Selection */}
+            <div className="mb-12">
+              <Label className="text-foreground mb-3 block text-sm font-medium">Model</Label>
+              <Select
+                value={agent.model_config?.model || 'claude-sonnet-4-5-20250929'}
+                onValueChange={(value) => {
+                  const selectedModel = llmModels?.find((m) => m.modelId === value)
+                  setAgent({
+                    ...agent,
+                    model_config: {
+                      ...agent.model_config,
+                      provider: selectedModel?.provider || 'anthropic',
+                      model: value,
+                      temperature: agent.model_config?.temperature || 0.7,
+                      max_tokens: agent.model_config?.max_tokens || 4096,
+                    },
+                  })
+                }}
+                disabled={modelsLoading}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={modelsLoading ? 'Loading models...' : 'Select a model'}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {llmModels && !modelsLoading ? (
+                    <>
+                      {/* Anthropic Models */}
+                      {llmModels.filter((m) => m.provider === 'anthropic').length > 0 && (
+                        <>
+                          <div className="text-muted-foreground px-2 py-1.5 text-xs font-semibold">
+                            Anthropic
+                          </div>
+                          {llmModels
+                            .filter((m) => m.provider === 'anthropic')
+                            .map((model) => (
+                              <SelectItem key={model.id} value={model.modelId}>
+                                {model.displayName}
+                              </SelectItem>
+                            ))}
+                        </>
+                      )}
+
+                      {/* OpenAI Models */}
+                      {llmModels.filter((m) => m.provider === 'openai').length > 0 && (
+                        <>
+                          <div className="text-muted-foreground px-2 py-1.5 text-xs font-semibold">
+                            OpenAI
+                          </div>
+                          {llmModels
+                            .filter((m) => m.provider === 'openai')
+                            .map((model) => (
+                              <SelectItem key={model.id} value={model.modelId}>
+                                {model.displayName}
+                              </SelectItem>
+                            ))}
+                        </>
+                      )}
+
+                      {/* Google Models */}
+                      {llmModels.filter((m) => m.provider === 'google').length > 0 && (
+                        <>
+                          <div className="text-muted-foreground px-2 py-1.5 text-xs font-semibold">
+                            Google
+                          </div>
+                          {llmModels
+                            .filter((m) => m.provider === 'google')
+                            .map((model) => (
+                              <SelectItem key={model.id} value={model.modelId}>
+                                {model.displayName}
+                              </SelectItem>
+                            ))}
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-muted-foreground px-2 py-4 text-center text-sm">
+                      Loading models...
+                    </div>
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-muted-foreground mt-2 text-xs">
+                Claude Sonnet 4.5 is recommended for complex tasks and tool calling
+              </p>
+            </div>
+
             {/* Instructions */}
             <div className="mb-12">
               <Label className="text-foreground mb-3 block text-sm font-medium">
@@ -323,16 +522,17 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
                                 integration.icon ||
                                 (integration.type === 'custom-tool'
                                   ? 'https://api.iconify.design/lucide/wrench.svg?color=%23888888'
-                                  : '')
+                                  : integration.platformId
+                                    ? PLATFORM_INTEGRATIONS.find(
+                                        (p) => p.id === integration.platformId
+                                      )?.icon ||
+                                      'https://api.iconify.design/lucide/box.svg?color=%23888888'
+                                    : 'https://api.iconify.design/lucide/box.svg?color=%23888888')
                               }
                               alt={integration.name}
-                              width={integration.icon ? 32 : 24}
-                              height={integration.icon ? 32 : 24}
-                              className={
-                                integration.icon
-                                  ? 'h-8 w-8 object-contain'
-                                  : 'h-6 w-6 object-contain'
-                              }
+                              width={32}
+                              height={32}
+                              className="h-8 w-8 object-contain"
                             />
                             <div>
                               <h3 className="text-foreground text-sm font-medium">
@@ -441,10 +641,55 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
                           }`}
                         >
                           <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                a: ({ ...props }) => (
+                                  <a
+                                    {...props}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-primary font-medium hover:underline"
+                                  />
+                                ),
+                                img: ({ ...props }) => (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    {...props}
+                                    alt={props.alt || 'Image'}
+                                    className="my-4 h-auto max-w-full rounded-lg"
+                                    loading="lazy"
+                                  />
+                                ),
+                              }}
+                            >
                               {message.content}
                             </ReactMarkdown>
                           </div>
+
+                          {/* Show attached images */}
+                          {message.attachments && message.attachments.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {message.attachments.map((attachment) => (
+                                <div
+                                  key={attachment.id}
+                                  className={`relative overflow-hidden rounded-lg border ${
+                                    message.role === 'user'
+                                      ? 'border-primary-foreground/20'
+                                      : 'border-border'
+                                  }`}
+                                >
+                                  <Image
+                                    src={attachment.url}
+                                    alt={attachment.name}
+                                    width={200}
+                                    height={200}
+                                    className="h-32 w-32 object-cover"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          )}
 
                           {message.toolCalls && message.toolCalls.length > 0 && (
                             <div className="border-border mt-3 border-t pt-3">
@@ -471,7 +716,28 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
                   <div className="flex justify-start">
                     <div className="bg-card text-foreground border-border shadow-soft-xs max-w-[85%] rounded-xl border px-5 py-3">
                       <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            a: ({ ...props }) => (
+                              <a
+                                {...props}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary font-medium hover:underline"
+                              />
+                            ),
+                            img: ({ ...props }) => (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                {...props}
+                                alt={props.alt || 'Image'}
+                                className="my-4 h-auto max-w-full rounded-lg"
+                                loading="lazy"
+                              />
+                            ),
+                          }}
+                        >
                           {playground.currentResponse}
                         </ReactMarkdown>
                       </div>
@@ -502,22 +768,130 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
             </div>
 
             {/* Input Area */}
-            <div className="border-border flex gap-3 border-t pt-4">
-              <Input
-                placeholder={tTest('messagePlaceholder')}
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={playground.isStreaming || isNewAgent}
-                className="flex-1"
-              />
-              <Button
-                onClick={handleSendMessage}
-                disabled={playground.isStreaming || !inputMessage.trim() || isNewAgent}
-                className="px-6"
-              >
-                {tCommon('send')}
-              </Button>
+            <div className="border-border space-y-3 border-t pt-4">
+              {/* Upload Status */}
+              {isUploadingFiles && (
+                <div className="text-muted-foreground flex items-center gap-2 text-sm">
+                  <svg
+                    className="h-4 w-4 animate-spin"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                  <span>Uploading images...</span>
+                </div>
+              )}
+
+              {/* Attached Files Preview */}
+              {attachedFiles.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {attachedFiles.map((file) => (
+                    <div
+                      key={file.id}
+                      className="bg-muted relative flex items-center gap-2 rounded-lg border p-2"
+                    >
+                      <Image
+                        src={file.url}
+                        alt={file.name}
+                        width={48}
+                        height={48}
+                        className="h-12 w-12 rounded object-cover"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm">{file.name}</p>
+                        <p className="text-muted-foreground text-xs">
+                          {(file.size / 1024).toFixed(1)} KB
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveFile(file.id)}
+                        className="h-6 w-6 p-0"
+                      >
+                        ✕
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Input Row */}
+              <div className="flex gap-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={playground.isStreaming || isNewAgent || isUploadingFiles}
+                  title="Attach images"
+                >
+                  {isUploadingFiles ? (
+                    <svg
+                      className="h-5 w-5 animate-spin"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                  ) : (
+                    '📎'
+                  )}
+                </Button>
+                <Input
+                  placeholder={tTest('messagePlaceholder')}
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={playground.isStreaming || isNewAgent}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={handleSendMessage}
+                  disabled={
+                    playground.isStreaming ||
+                    (!inputMessage.trim() && attachedFiles.length === 0) ||
+                    isNewAgent
+                  }
+                  className="px-6"
+                >
+                  {tCommon('send')}
+                </Button>
+              </div>
             </div>
           </div>
         )}

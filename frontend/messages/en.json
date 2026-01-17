@@ -237,6 +237,12 @@
     "useAsToolDescription": "Use {name} as a tool",
     "modelClaudeSonnet4": "Claude Sonnet 4",
     "modelClaudeOpus4": "Claude Opus 4",
-    "modelGpt4": "GPT-4"
+    "modelGpt4": "GPT-4",
+    "connectAccount": "Connect Account",
+    "oauthDescription": "Click the button below to authorize access to your {platform} account",
+    "initializing": "Initializing...",
+    "connectButton": "Connect {platform}",
+    "authorizingWait": "Authorizing, please wait...",
+    "authSuccess": "Successfully connected!"
   }
 }

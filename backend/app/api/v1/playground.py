@@ -38,10 +38,11 @@ async def playground_websocket(websocket: WebSocket, agent_id: str) -> None:
                 continue
 
             user_content = message.get("content")
+            attachments = message.get("attachments", [])
             conversation_id_str = message.get("conversation_id")
 
-            if not user_content:
-                await websocket.send_json({"type": "error", "error": "Missing content"})
+            if not user_content and not attachments:
+                await websocket.send_json({"type": "error", "error": "Missing content or attachments"})
                 continue
 
             # Parse IDs
@@ -67,6 +68,7 @@ async def playground_websocket(websocket: WebSocket, agent_id: str) -> None:
                     user_message=user_content,
                     conversation_id=conversation_uuid,
                     user_api_keys=user_api_keys,
+                    attachments=attachments,
                 ):
                     await websocket.send_json(event.to_dict())
 

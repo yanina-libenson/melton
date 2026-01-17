@@ -65,6 +65,11 @@ async def update_agent(
     agent_service: AgentServiceDep,
 ) -> AgentResponse:
     """Update an agent."""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.error(f"📥 Backend received AgentUpdate: {agent_data.model_dump(exclude_unset=True)}")
+    logger.error(f"📥 With aliases: {agent_data.model_dump(exclude_unset=True, by_alias=True)}")
+
     agent = await agent_service.update_agent(agent_id, agent_data)
     if not agent:
         raise HTTPException(

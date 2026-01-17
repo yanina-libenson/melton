@@ -35,12 +35,44 @@ class ToolService:
         if not integration:
             raise ValueError(f"Integration with ID {integration_id} not found")
 
+        # For pre-built platform tools (not custom API tools), always get schema from the tool class
+        # Pre-built tools have platform_id set and tool_type is None
+        # Custom API tools have tool_type set (api/llm/sub-agent) and use user-provided schema
+        final_tool_schema = tool_schema or {}
+        if integration.platform_id and tool_type is None:
+            # This is a pre-built platform tool - schema comes from tool class
+            from app.tools.factory import ToolFactory
+
+            # Create a temporary tool model to get the schema
+            temp_tool = Tool(
+                integration_id=integration_id,
+                name=name,
+                description=description,
+                tool_type=tool_type,
+                tool_schema={},
+                config=config or {},
+                is_enabled=is_enabled,
+            )
+            temp_tool.integration = integration
+
+            try:
+                # Instantiate the platform tool to get its schema
+                tool_instance = ToolFactory.create_tool(temp_tool)
+                final_tool_schema = tool_instance.get_schema()
+            except Exception as e:
+                # If we can't get schema, log but continue with provided schema
+                import logging
+
+                logging.warning(f"Could not get schema for platform tool: {e}")
+                # Fall back to provided schema if tool instantiation fails
+                final_tool_schema = tool_schema or {}
+
         tool = Tool(
             integration_id=integration_id,
             name=name,
             description=description,
             tool_type=tool_type,
-            tool_schema=tool_schema or {},
+            tool_schema=final_tool_schema,
             config=config or {},
             is_enabled=is_enabled,
         )

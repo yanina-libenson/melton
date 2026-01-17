@@ -10,6 +10,16 @@ export type IntegrationSourceType = 'platform' | 'custom-tool' | 'sub-agent'
 
 export type CustomToolType = 'api' | 'llm'
 
+export interface LLMModel {
+  id: string
+  modelId: string
+  provider: 'anthropic' | 'openai' | 'google'
+  displayName: string
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 export interface Agent {
   id: string
   userId: string
@@ -104,6 +114,7 @@ export interface PlatformIntegration {
   icon: string
   category: string
   requiresAuth: boolean
+  authType?: 'oauth' | 'manual'
   authFields: AuthField[]
 }
 
@@ -115,10 +126,20 @@ export interface AuthField {
   required: boolean
 }
 
+export interface FileAttachment {
+  id: string
+  name: string
+  type: string // MIME type
+  size: number
+  url: string // Data URL for preview
+  publicUrl?: string // Public URL for API calls
+}
+
 export interface Message {
   id: string
   role: 'user' | 'agent' | 'system'
   content: string
+  attachments?: FileAttachment[]
   toolCalls?: ToolCall[]
   timestamp: string
 }

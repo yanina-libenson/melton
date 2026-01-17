@@ -40,6 +40,7 @@ class APIClient {
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true', // Bypass ngrok browser warning page
       ...(options.headers as Record<string, string>),
     }
 
@@ -119,6 +120,10 @@ class APIClient {
   // Integration endpoints
   async getIntegrations(agentId: string): Promise<IntegrationSource[]> {
     return this.request(`${API_VERSION}/agents/${agentId}/integrations`)
+  }
+
+  async getIntegration(integrationId: string): Promise<IntegrationSource> {
+    return this.request(`${API_VERSION}/integrations/${integrationId}`)
   }
 
   async createIntegration(data: {
@@ -226,6 +231,11 @@ class APIClient {
     })
   }
 
+  // LLM Models endpoints
+  async getLLMModels(): Promise<import('@/lib/types').LLMModel[]> {
+    return this.request(`${API_VERSION}/llm-models`)
+  }
+
   // User API Keys endpoints
   async getUserApiKeys(): Promise<{
     openai: { provider: string; is_configured: boolean; masked_key: string | null }
@@ -257,6 +267,36 @@ class APIClient {
     return this.request(`${API_VERSION}/user-settings/api-keys/${provider}`, {
       method: 'DELETE',
     })
+  }
+
+  // Upload endpoints
+  async uploadImage(formData: FormData): Promise<{
+    success: boolean
+    url: string
+    filename: string
+    size: number
+  }> {
+    const url = `${this.baseURL}${API_VERSION}/uploads/image`
+
+    const headers: Record<string, string> = {
+      'ngrok-skip-browser-warning': 'true', // Bypass ngrok browser warning page
+    }
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null)
+      throw new APIError(response.status, response.statusText, errorData)
+    }
+
+    return response.json()
   }
 
   // Playground WebSocket

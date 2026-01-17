@@ -47,6 +47,7 @@ class AgentExecutionService:
         user_message: str,
         conversation_id: uuid.UUID | None = None,
         user_api_keys: dict[str, str] | None = None,
+        attachments: list[dict] | None = None,
     ) -> AsyncIterator[ExecutionEvent]:
         """
         Execute agent conversation with streaming.
@@ -56,6 +57,7 @@ class AgentExecutionService:
             user_message: User's message
             conversation_id: Existing conversation ID (optional)
             user_api_keys: User-provided API keys for LLM providers
+            attachments: File attachments from user (list of dicts with id, name, type, size, url)
 
         Yields:
             ExecutionEvent objects for streaming to client
@@ -117,7 +119,7 @@ class AgentExecutionService:
             provider = LLMProviderFactory.create_provider(provider_type, api_key)
 
             try:
-                # 8. Build enhanced system prompt with tool descriptions
+                # 8. Build enhanced system prompt with tool descriptions (STATIC)
                 enhanced_instructions = self._build_enhanced_system_prompt(agent.instructions, tool_schemas)
 
                 # DEBUG: Log enhanced system prompt
@@ -128,11 +130,79 @@ class AgentExecutionService:
                 logger.error(f"==========================================")
 
                 # 9. Agentic loop - continue until LLM responds without calling tools
-                max_iterations = 5
+                max_iterations = 15  # Allow up to 15 tool calls
                 iteration = 0
+                consecutive_failures = 0  # Track consecutive failed tool calls (global, for logging)
+                tool_failure_counts = {}  # Track consecutive failures per tool
                 conversation_messages = history.copy()
+
+                # 9a. If user attached files, enhance the last user message with image content
+                if attachments and len(conversation_messages) > 0:
+                    # Extract image URLs from attachments
+                    image_urls = [att.get("url") for att in attachments if att.get("url")]
+
+                    if image_urls:
+                        # Find the last user message and enhance it
+                        for i in range(len(conversation_messages) - 1, -1, -1):
+                            if conversation_messages[i].get("role") == "user":
+                                # Convert content to multimodal format with text + images
+                                current_content = conversation_messages[i].get("content", "")
+
+                                # Build content array with text and images
+                                content_parts = []
+
+                                # Add text if present
+                                if current_content and current_content.strip():
+                                    content_parts.append({"type": "text", "text": current_content})
+
+                                # Add public URLs information if available
+                                attachments_with_public_urls = [
+                                    att for att in attachments
+                                    if att.get("publicUrl")
+                                ]
+                                if attachments_with_public_urls:
+                                    public_urls_text = "\n\n[Attached images uploaded to server - public URLs for API calls:\n"
+                                    for idx, att in enumerate(attachments_with_public_urls, 1):
+                                        public_urls_text += f"Image {idx}: {att.get('publicUrl')}\n"
+                                    public_urls_text += "]"
+                                    content_parts.append({"type": "text", "text": public_urls_text})
+
+                                # Add images - format depends on provider
+                                for url in image_urls:
+                                    if url.startswith("data:image/"):
+                                        if provider_type == "openai":
+                                            # OpenAI format: image_url with data URL
+                                            content_parts.append({
+                                                "type": "image_url",
+                                                "image_url": {
+                                                    "url": url
+                                                }
+                                            })
+                                        else:
+                                            # Anthropic format: image with base64 source
+                                            import re
+                                            match = re.match(r"data:(image/[^;]+);base64,(.+)", url)
+                                            if match:
+                                                media_type = match.group(1)
+                                                base64_data = match.group(2)
+                                                content_parts.append({
+                                                    "type": "image",
+                                                    "source": {
+                                                        "type": "base64",
+                                                        "media_type": media_type,
+                                                        "data": base64_data,
+                                                    }
+                                                })
+
+                                # Update message with multimodal content
+                                if content_parts:
+                                    conversation_messages[i]["content"] = content_parts
+
+                                break
+
                 all_tool_calls = []
                 final_response_content = ""
+                created_entities = {}  # Track entities created during execution (IDs, references, etc.)
 
                 while iteration < max_iterations:
                     iteration += 1
@@ -166,13 +236,38 @@ class AgentExecutionService:
                             tool_result = await self._execute_tool(event.tool_name, event.tool_input or {})
                             duration_ms = int((time.time() - start_time) * 1000)
 
+                            # Track consecutive failures per tool
+                            tool_success = tool_result.get("success", True)
+                            tool_name = event.tool_name
+
+                            if not tool_success:
+                                # Increment failure count for this specific tool
+                                tool_failure_counts[tool_name] = tool_failure_counts.get(tool_name, 0) + 1
+                                consecutive_failures += 1  # Keep global counter for logging
+                                logger.info(f"Tool {tool_name} failed (consecutive failures: {tool_failure_counts[tool_name]})")
+                            else:
+                                # Reset failure count for this specific tool
+                                tool_failure_counts[tool_name] = 0
+                                consecutive_failures = 0
+                                logger.info(f"Tool {tool_name} succeeded - resetting its failure counter")
+
+                                # Track created entities from successful tool calls
+                                # Look for common ID patterns in the result
+                                result_data = tool_result.get("result", {}) if isinstance(tool_result.get("result"), dict) else {}
+                                common_id_keys = ["id", "chart_id", "item_id", "integration_id", "user_id", "product_id",
+                                                  "publication_id", "order_id", "category_id", "grid_id", "size_grid_id"]
+                                for key in common_id_keys:
+                                    if key in result_data and result_data[key]:
+                                        created_entities[key] = result_data[key]
+                                        logger.info(f"Tracked created entity: {key}={result_data[key]}")
+
                             # Trace tool execution
                             observability_service.trace_tool_execution(
                                 tool_name=event.tool_name,
                                 input_data=event.tool_input or {},
                                 output_data=tool_result,
                                 duration_ms=duration_ms,
-                                success=tool_result.get("success", False),
+                                success=tool_success,
                             )
 
                             # Track tool use with ID
@@ -200,17 +295,36 @@ class AgentExecutionService:
                         final_response_content = assistant_content
                         break
 
+                    # Check stop conditions
+                    total_tool_calls = len(all_tool_calls) + len(tool_uses)
+
                     # If tools were called, complete this message before continuing
                     # This creates a separate message bubble for this thinking/tool-calling iteration
                     import logging
                     logger = logging.getLogger(__name__)
-                    logger.error(f"ITERATION {iteration}: tool_uses={len(tool_uses)}, assistant_content='{assistant_content[:100] if assistant_content else 'EMPTY'}'")
+                    logger.error(f"ITERATION {iteration}: tool_uses={len(tool_uses)}, total_calls={total_tool_calls}, consecutive_failures={consecutive_failures}, tool_failure_counts={tool_failure_counts}, assistant_content='{assistant_content[:100] if assistant_content else 'EMPTY'}'")
 
                     if assistant_content:
                         logger.error(f"Sending message_complete after iteration {iteration} with content")
                         yield ExecutionEvent("message_complete", message_id=str(uuid.uuid4()))
                     else:
                         logger.error(f"NOT sending message_complete - no assistant content in iteration {iteration}")
+
+                    # Check if we should stop due to limits
+                    # Check if any single tool has failed 6 times in a row
+                    max_tool_failures = max(tool_failure_counts.values()) if tool_failure_counts else 0
+                    if max_tool_failures >= 6:
+                        failing_tool = [k for k, v in tool_failure_counts.items() if v >= 6][0]
+                        logger.error(f"Stopping: tool {failing_tool} failed 6 times in a row")
+                        final_response_content = f"The {failing_tool} operation has failed 6 times in a row. Let me know if you'd like me to try a different approach or if you can provide additional information."
+                        yield ExecutionEvent("content_delta", delta=final_response_content)
+                        break
+
+                    if total_tool_calls >= 15:
+                        logger.error(f"Stopping: 15 tool calls limit reached")
+                        final_response_content = f"I've reached the limit of 15 tool calls for this turn. I've made progress, but may need to continue in the next message. Let me know if you'd like me to continue or if you need clarification on what I've done so far."
+                        yield ExecutionEvent("content_delta", delta=final_response_content)
+                        break
 
                     # Build messages in provider-specific format
                     if provider_type == "anthropic":
@@ -240,6 +354,23 @@ class AgentExecutionService:
                                 result_str = tool_result.get("error", str(tool_result))
                             else:
                                 result_str = str(tool_result.get("result", tool_result))
+
+                            # Build context summary
+                            recent_successes = [tc for tc in all_tool_calls[-5:] if tc.get("output", {}).get("success", False)]
+                            context_summary = ""
+                            if recent_successes:
+                                context_summary = "\n[Recent successful operations: "
+                                context_summary += ", ".join([f"{tc['tool_name']}" for tc in recent_successes])
+                                context_summary += "]"
+
+                            # Add created entities info
+                            entities_info = ""
+                            if created_entities:
+                                entities_info = "\n[Created entities available for use: " + ", ".join([f"{k}={v}" for k, v in created_entities.items()]) + "]"
+
+                            # Add progress tracking to help LLM stay aware
+                            progress_info = f"\n\n[Progress: {total_tool_calls}/{max_iterations} tool calls made, {consecutive_failures} consecutive failures]{context_summary}{entities_info}"
+                            result_str = result_str + progress_info
 
                             tool_results_content.append({
                                 "type": "tool_result",
@@ -285,6 +416,23 @@ class AgentExecutionService:
                                 result_str = tool_result.get("error", str(tool_result))
                             else:
                                 result_str = str(tool_result.get("result", tool_result))
+
+                            # Build context summary
+                            recent_successes = [tc for tc in all_tool_calls[-5:] if tc.get("output", {}).get("success", False)]
+                            context_summary = ""
+                            if recent_successes:
+                                context_summary = "\n[Recent successful operations: "
+                                context_summary += ", ".join([f"{tc['tool_name']}" for tc in recent_successes])
+                                context_summary += "]"
+
+                            # Add created entities info
+                            entities_info = ""
+                            if created_entities:
+                                entities_info = "\n[Created entities available for use: " + ", ".join([f"{k}={v}" for k, v in created_entities.items()]) + "]"
+
+                            # Add progress tracking to help LLM stay aware
+                            progress_info = f"\n\n[Progress: {total_tool_calls}/{max_iterations} tool calls made, {consecutive_failures} consecutive failures]{context_summary}{entities_info}"
+                            result_str = result_str + progress_info
 
                             conversation_messages.append({
                                 "role": "tool",
@@ -398,7 +546,13 @@ class AgentExecutionService:
                         api_key = self._get_api_key(provider_type, user_api_keys)
 
                     # Create tool instance
-                    tool_instance = ToolFactory.create_tool(tool, api_key=api_key)
+                    tool_instance = ToolFactory.create_tool(
+                        tool,
+                        api_key=api_key,
+                        session=self.session,
+                        user_id=agent.user_id,
+                        organization_id=agent.organization_id,
+                    )
 
                     # Register in registry
                     self.tool_registry.register(tool_name, tool_instance)
@@ -435,11 +589,25 @@ class AgentExecutionService:
 
     def _build_enhanced_system_prompt(self, base_instructions: str, tool_schemas: list[dict[str, Any]]) -> str:
         """
-        Build enhanced system prompt that includes tool descriptions.
-        This helps the LLM understand what tools are available and their required parameters.
+        Build enhanced system prompt that includes default behavioral instructions and tool descriptions.
+
+        Structure:
+        1. User's custom instructions (from agent.instructions)
+        2. Default behavioral instructions (auto-added at runtime)
+        3. Available tools (auto-added at runtime)
         """
+        from app.services.agent_defaults import get_default_agent_instructions
+
+        # Start with user's custom instructions
+        enhanced_prompt = base_instructions
+
+        # Append default behavioral instructions
+        default_instructions = get_default_agent_instructions()
+        enhanced_prompt += f"\n\n{default_instructions}"
+
+        # Append tools section if tools are available
         if not tool_schemas:
-            return base_instructions
+            return enhanced_prompt
 
         tools_section = "\n\n# Available Tools\n\nYou have access to the following tools:\n\n"
 
@@ -466,6 +634,4 @@ class AgentExecutionService:
             else:
                 tools_section += "No parameters required.\n\n"
 
-        tools_section += "\n**IMPORTANT:** Always provide all REQUIRED parameters when calling tools. Do not call a tool with empty input `{}` if it has required parameters.\n"
-
-        return base_instructions + tools_section
+        return enhanced_prompt + tools_section

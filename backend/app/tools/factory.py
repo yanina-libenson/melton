@@ -1,34 +1,59 @@
 """Tool factory for creating tool instances from database records."""
 
+import uuid
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.tool import Tool as ToolModel
 from app.tools.api_tool import APITool
 from app.tools.base_tool import BaseTool
+from app.tools.builtin_tool import BuiltinTool
 from app.tools.llm_tool import LLMTool
 
 
 class ToolFactory:
     """
     Factory for creating tool instances from database records.
-    Handles instantiation of APITool, LLMTool, and future tool types.
+    Handles instantiation of APITool, LLMTool, BuiltinTool, and future tool types.
     """
 
     @staticmethod
-    def create_tool(tool_model: ToolModel, api_key: str | None = None) -> BaseTool:
+    def create_tool(
+        tool_model: ToolModel,
+        api_key: str | None = None,
+        session: AsyncSession | None = None,
+        user_id: uuid.UUID | None = None,
+        organization_id: uuid.UUID | None = None,
+    ) -> BaseTool:
         """
         Create a tool instance from a database model.
 
         Args:
             tool_model: Tool database model
             api_key: API key for LLM tools
+            session: Database session (required for builtin tools)
+            user_id: User ID (required for builtin tools)
+            organization_id: Organization ID (required for builtin tools)
 
         Returns:
-            BaseTool instance (APITool or LLMTool)
+            BaseTool instance (APITool, LLMTool, BuiltinTool, or Platform Tool)
 
         Raises:
             ValueError: If tool type is unsupported
         """
         tool_type = tool_model.tool_type
+
+        # Handle builtin tools first (before checking platform_id)
+        if tool_type == "builtin":
+            if not session or not user_id or not organization_id:
+                raise ValueError("Builtin tools require session, user_id, and organization_id")
+            return ToolFactory._create_builtin_tool(tool_model, session, user_id, organization_id)
+
+        # Check if this is a real platform integration (pre-built)
+        # Only treat as platform if integration.type is "platform"
+        if tool_model.integration.type == "platform" and tool_model.integration.platform_id:
+            return ToolFactory._create_platform_tool(tool_model)
 
         if tool_type == "api":
             return ToolFactory._create_api_tool(tool_model)
@@ -78,4 +103,86 @@ class ToolFactory:
             tool_schema=tool_model.tool_schema,
             config=tool_model.config,
             api_key=api_key,
+        )
+
+    @staticmethod
+    def _create_platform_tool(tool_model: ToolModel) -> BaseTool:
+        """
+        Create a pre-built platform tool instance.
+
+        Args:
+            tool_model: Tool database model with integration.platform_id
+
+        Returns:
+            Platform-specific tool instance
+
+        Raises:
+            ValueError: If platform not supported
+        """
+        platform_id = tool_model.integration.platform_id
+        tool_name = tool_model.name.lower()
+
+        # Mercado Libre platform
+        if platform_id == "mercadolibre":
+            from app.tools.platforms.mercadolibre import (
+                MercadoLibreCategoriesTool,
+                MercadoLibrePublicationsTool,
+                MercadoLibreQuestionsTool,
+                MercadoLibreSizeGridsTool,
+            )
+
+            # Determine which tool based on tool name or config
+            if "publication" in tool_name or tool_name == "ml-publications":
+                return MercadoLibrePublicationsTool(
+                    tool_id=str(tool_model.id),
+                    tool_config=tool_model.config,
+                    integration=tool_model.integration,
+                )
+            elif "question" in tool_name or tool_name == "ml-questions":
+                return MercadoLibreQuestionsTool(
+                    tool_id=str(tool_model.id),
+                    tool_config=tool_model.config,
+                    integration=tool_model.integration,
+                )
+            elif "categor" in tool_name or tool_name == "ml-categories":
+                return MercadoLibreCategoriesTool(
+                    tool_id=str(tool_model.id),
+                    tool_config=tool_model.config,
+                    integration=tool_model.integration,
+                )
+            elif "sizegrid" in tool_name or "size" in tool_name and "grid" in tool_name or tool_name == "ml-sizegrids":
+                return MercadoLibreSizeGridsTool(
+                    tool_id=str(tool_model.id),
+                    tool_config=tool_model.config,
+                    integration=tool_model.integration,
+                )
+            else:
+                raise ValueError(f"Unknown Mercado Libre tool: {tool_name}")
+
+        # Add more platforms here as they are implemented
+        else:
+            raise ValueError(f"Platform {platform_id} not supported")
+
+    @staticmethod
+    def _create_builtin_tool(
+        tool_model: ToolModel,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        organization_id: uuid.UUID,
+    ) -> BuiltinTool:
+        """Create a BuiltinTool instance."""
+        config = {
+            "name": tool_model.name,
+            "description": tool_model.description,
+            "function_name": tool_model.config.get("function_name"),
+            "tool_schema": tool_model.tool_schema,
+            **tool_model.config,
+        }
+
+        return BuiltinTool(
+            tool_id=str(tool_model.id),
+            config=config,
+            session=session,
+            user_id=user_id,
+            organization_id=organization_id,
         )

@@ -44,7 +44,13 @@
       "Bash(python3.13:*)",
       "Bash(xargs grep:*)",
       "Bash(cat:*)",
-      "Bash(docker-compose restart:*)"
+      "Bash(docker-compose restart:*)",
+      "WebFetch(domain:developers.mercadolibre.com.ar)",
+      "Bash(timeout 5 curl:*)",
+      "Bash(kill:*)",
+      "Bash(xargs:*)",
+      "Bash(npm run lint:fix:*)",
+      "Bash(npm run format:*)"
     ]
   }
 }

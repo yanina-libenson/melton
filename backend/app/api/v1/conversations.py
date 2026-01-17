@@ -20,11 +20,26 @@ router = APIRouter()
 
 def _build_enhanced_system_prompt(base_instructions: str, tool_schemas: list[dict[str, Any]]) -> str:
     """
-    Build enhanced system prompt that includes tool descriptions.
+    Build enhanced system prompt that includes default behavioral instructions and tool descriptions.
     This recreates the exact prompt that was used during agent execution.
+
+    Structure:
+    1. User's custom instructions (from agent.instructions)
+    2. Default behavioral instructions (auto-added at runtime)
+    3. Available tools (auto-added at runtime)
     """
+    from app.services.agent_defaults import get_default_agent_instructions
+
+    # Start with user's custom instructions
+    enhanced_prompt = base_instructions
+
+    # Append default behavioral instructions
+    default_instructions = get_default_agent_instructions()
+    enhanced_prompt += f"\n\n{default_instructions}"
+
+    # Append tools section if tools are available
     if not tool_schemas:
-        return base_instructions
+        return enhanced_prompt
 
     tools_section = "\n\n# Available Tools\n\nYou have access to the following tools:\n\n"
 
@@ -51,9 +66,7 @@ def _build_enhanced_system_prompt(base_instructions: str, tool_schemas: list[dic
         else:
             tools_section += "No parameters required.\n\n"
 
-    tools_section += "\n**IMPORTANT:** Always provide all REQUIRED parameters when calling tools. Do not call a tool with empty input `{}` if it has required parameters.\n"
-
-    return base_instructions + tools_section
+    return enhanced_prompt + tools_section
 
 
 @router.get("")

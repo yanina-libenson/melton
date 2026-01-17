@@ -158,6 +158,16 @@ export const PLATFORM_INTEGRATIONS: PlatformIntegration[] = [
       },
     ],
   },
+  {
+    id: 'mercadolibre',
+    name: 'Mercado Libre',
+    description: 'Manage publications, answer customer questions, handle orders',
+    icon: 'https://http2.mlstatic.com/frontend-assets/ml-web-navigation/ui-navigation/5.21.22/mercadolibre/logo__large_plus.png',
+    category: 'E-commerce',
+    requiresAuth: true,
+    authType: 'oauth',
+    authFields: [],
+  },
 ]
 
 export const PLATFORM_TOOLS: Record<string, Tool[]> = {
@@ -273,6 +283,32 @@ export const PLATFORM_TOOLS: Record<string, Tool[]> = {
       name: 'Create Event',
       description: 'Schedule a new calendar event',
       sourceId: 'calendar',
+    },
+  ],
+  mercadolibre: [
+    {
+      id: 'ml-publications',
+      name: 'Publications Management',
+      description: 'Create, update, delete, and list product publications',
+      sourceId: 'mercadolibre',
+    },
+    {
+      id: 'ml-questions',
+      name: 'Questions Management',
+      description: 'Get and answer customer questions',
+      sourceId: 'mercadolibre',
+    },
+    {
+      id: 'ml-categories',
+      name: 'Categories',
+      description: 'Find the right category for products and get required attributes',
+      sourceId: 'mercadolibre',
+    },
+    {
+      id: 'ml-sizegrids',
+      name: 'Size Grids',
+      description: 'Manage size charts required for fashion items',
+      sourceId: 'mercadolibre',
     },
   ],
 }

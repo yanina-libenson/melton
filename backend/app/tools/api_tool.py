@@ -89,12 +89,23 @@ class APITool(BaseTool):
     async def _make_api_call(self, input_data: dict[str, Any]) -> Any:
         """Make HTTP request with authentication."""
         import logging
+        from urllib.parse import urlencode
         logger = logging.getLogger(__name__)
 
         headers = await self._build_headers()
         url, remaining_params = self._build_url(input_data)
 
-        logger.error(f"[DEBUG] Making API call to: {url} with params: {remaining_params}")
+        logger.error(f"[DEBUG] remaining_params before urlencode: {remaining_params}")
+
+        # For GET requests with query params, build URL manually to avoid over-encoding
+        if self.method == "GET" and remaining_params:
+            # Use safe parameter to preserve special characters like |, :, etc.
+            query_string = urlencode(remaining_params, safe=':,|')
+            logger.error(f"[DEBUG] query_string after urlencode: {query_string}")
+            url = f"{url}?{query_string}" if '?' not in url else f"{url}&{query_string}"
+            remaining_params = None
+
+        logger.error(f"[DEBUG] Final URL: {url}")
 
         async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
             # Retry logic for OAuth token refresh
@@ -102,7 +113,7 @@ class APITool(BaseTool):
                 try:
                     # Make HTTP request based on method
                     if self.method == "GET":
-                        response = await client.get(url, headers=headers, params=remaining_params)
+                        response = await client.get(url, headers=headers)
                     elif self.method == "POST":
                         response = await client.post(url, headers=headers, json=input_data)
                     elif self.method == "PUT":
@@ -121,6 +132,14 @@ class APITool(BaseTool):
                         continue
 
                     response.raise_for_status()
+
+                    # Check content type to handle different response types
+                    content_type = response.headers.get("content-type", "").lower()
+
+                    # If response is an image, return the URL instead of the image data
+                    if content_type.startswith("image/"):
+                        logger.info(f"Response is an image ({content_type}), returning URL instead of binary data")
+                        return url
 
                     # Try to parse as JSON, otherwise return text
                     if response.content:
@@ -219,14 +238,18 @@ class APITool(BaseTool):
             Tuple of (url, remaining_params) where remaining_params are inputs
             that weren't used in URL templating
         """
+        from urllib.parse import quote
+
         url = self.endpoint
         used_keys = set()
 
-        # Replace template variables
+        # Replace template variables with URL-encoded values
         for key, value in input_data.items():
             template = f"{{{key}}}"
             if template in url:
-                url = url.replace(template, str(value))
+                # URL-encode the value but preserve special chars like |, :, ,
+                encoded_value = quote(str(value), safe=':,|')
+                url = url.replace(template, encoded_value)
                 used_keys.add(key)
 
         # Return remaining params that weren't used in URL template

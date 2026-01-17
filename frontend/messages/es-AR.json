@@ -29,7 +29,10 @@
     "noAgentsYet": "Todavía no hay agentes",
     "createFirstAgent": "Creá tu Primer Agente",
     "toolCount": "{count, plural, =0 {Sin herramientas} =1 {1 herramienta} other {# herramientas}}",
-    "active": "Activo"
+    "active": "Activo",
+    "loading": "Cargando agentes...",
+    "errorLoading": "Error al cargar agentes",
+    "retry": "Reintentar"
   },
   "auth": {
     "title": "Bienvenido a Dr. Melton",
@@ -234,6 +237,14 @@
     "useAsToolDescription": "Usar {name} como herramienta",
     "modelClaudeSonnet4": "Claude Sonnet 4",
     "modelClaudeOpus4": "Claude Opus 4",
-    "modelGpt4": "GPT-4"
+    "modelGpt4": "GPT-4",
+    "connectAccount": "Conectar cuenta",
+    "oauthDescription": "Hacé clic en el botón para autorizar el acceso a tu cuenta de {platform}",
+    "initializing": "Inicializando...",
+    "connectButton": "Conectar {platform}",
+    "authorizingWait": "Autorizando, por favor esperá...",
+    "authSuccess": "¡Conectado exitosamente!",
+    "authFailed": "La autorización falló",
+    "tryAgain": "Intentar de nuevo"
   }
 }
