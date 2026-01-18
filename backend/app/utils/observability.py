@@ -2,17 +2,23 @@
 
 from typing import Any
 
-from langfuse import Langfuse
-from langfuse.decorators import langfuse_context, observe
-
 from app.config import settings
+
+try:
+    from langfuse import Langfuse
+    from langfuse.decorators import langfuse_context, observe
+    LANGFUSE_AVAILABLE = True
+except ImportError:
+    LANGFUSE_AVAILABLE = False
+    langfuse_context = None
+    observe = None
 
 
 class ObservabilityService:
     """Service for managing observability and tracing. Focused on LangFuse integration."""
 
     def __init__(self) -> None:
-        if settings.langfuse_public_key and settings.langfuse_secret_key:
+        if LANGFUSE_AVAILABLE and settings.langfuse_public_key and settings.langfuse_secret_key:
             self.client = Langfuse(
                 public_key=settings.langfuse_public_key,
                 secret_key=settings.langfuse_secret_key,

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
@@ -9,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import Image from 'next/image'
 import { apiClient } from '@/lib/api/client'
+import { useAuth } from '@/lib/contexts/auth-context'
 
 interface ProviderToken {
   id: string
@@ -22,10 +24,18 @@ interface ProviderToken {
 }
 
 export default function SettingsPage() {
+  const router = useRouter()
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
   const t = useTranslations('settings')
   const tCommon = useTranslations('common')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/auth')
+    }
+  }, [isAuthenticated, authLoading, router])
 
   const [providers, setProviders] = useState<ProviderToken[]>([
     {

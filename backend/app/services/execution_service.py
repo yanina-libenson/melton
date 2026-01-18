@@ -48,6 +48,7 @@ class AgentExecutionService:
         conversation_id: uuid.UUID | None = None,
         user_api_keys: dict[str, str] | None = None,
         attachments: list[dict] | None = None,
+        user_id: uuid.UUID | None = None,
     ) -> AsyncIterator[ExecutionEvent]:
         """
         Execute agent conversation with streaming.
@@ -58,6 +59,7 @@ class AgentExecutionService:
             conversation_id: Existing conversation ID (optional)
             user_api_keys: User-provided API keys for LLM providers
             attachments: File attachments from user (list of dicts with id, name, type, size, url)
+            user_id: User ID for conversation tracking (optional)
 
         Yields:
             ExecutionEvent objects for streaming to client
@@ -76,7 +78,10 @@ class AgentExecutionService:
 
             # 3. Get or create conversation (STATEFUL)
             conversation = await self.conversation_service.get_or_create_conversation(
-                agent_id=agent_id, conversation_id=conversation_id, channel_type="test"
+                agent_id=agent_id,
+                conversation_id=conversation_id,
+                channel_type="playground",
+                user_id=user_id,
             )
 
             yield ExecutionEvent("conversation_started", conversation_id=str(conversation.id))

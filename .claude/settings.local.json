@@ -50,7 +50,12 @@
       "Bash(kill:*)",
       "Bash(xargs:*)",
       "Bash(npm run lint:fix:*)",
-      "Bash(npm run format:*)"
+      "Bash(npm run format:*)",
+      "Bash(alembic upgrade:*)",
+      "Bash(xcodebuild:*)",
+      "Bash(git show:*)",
+      "Bash(uv add:*)",
+      "Bash(/Users/yani/.pyenv/versions/3.10.7/bin/pip3 install:*)"
     ]
   }
 }

@@ -7,6 +7,7 @@ import '../globals.css'
 import { Toaster } from '@/components/ui/sonner'
 import { Nav } from '@/components/nav'
 import { locales, type Locale } from '@/lib/i18n/config'
+import { AuthProvider } from '@/lib/contexts/auth-context'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -44,9 +45,11 @@ export default async function RootLayout({ children, params }: Props) {
     <html lang={locale}>
       <body className={`${inter.variable} ${dancingScript.variable} font-sans antialiased`}>
         <NextIntlClientProvider messages={messages}>
-          <Nav />
-          <main className="pt-14">{children}</main>
-          <Toaster />
+          <AuthProvider>
+            <Nav />
+            <main className="pt-14">{children}</main>
+            <Toaster />
+          </AuthProvider>
         </NextIntlClientProvider>
       </body>
     </html>

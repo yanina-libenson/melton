@@ -1,14 +1,25 @@
 'use client'
 
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { useAgents } from '@/lib/hooks/useAgents'
+import { useAuth } from '@/lib/contexts/auth-context'
 
 export default function AgentsPage() {
-  const { agents, isLoading, isError } = useAgents()
+  const router = useRouter()
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { agents, isLoading, isError } = useAgents(isAuthenticated)
   const t = useTranslations('agents')
   const tDates = useTranslations('dates')
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/auth')
+    }
+  }, [isAuthenticated, authLoading, router])
 
   function formatDate(dateString: string): string {
     const date = new Date(dateString)

@@ -35,6 +35,10 @@ class APIClient {
     this.token = null
   }
 
+  getToken(): string | null {
+    return this.token
+  }
+
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.baseURL}${endpoint}`
 
@@ -44,8 +48,18 @@ class APIClient {
       ...(options.headers as Record<string, string>),
     }
 
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`
+    // Use token from instance, or fall back to localStorage (resilient to hot reload)
+    const token =
+      this.token ||
+      (typeof window !== 'undefined' ? localStorage.getItem('melton_auth_token') : null)
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+
+      // If token was from localStorage, sync it to instance
+      if (!this.token && token) {
+        console.log('[APIClient] Token recovered from localStorage')
+        this.token = token
+      }
     }
 
     const response = await fetch(url, {
@@ -63,6 +77,63 @@ class APIClient {
     }
 
     return response.json()
+  }
+
+  // Auth endpoints
+  async register(data: {
+    email: string
+    password: string
+    full_name?: string
+  }): Promise<{ access_token: string; token_type: string }> {
+    return this.request(`${API_VERSION}/auth/register`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async login(data: {
+    email: string
+    password: string
+  }): Promise<{ access_token: string; token_type: string }> {
+    return this.request(`${API_VERSION}/auth/login`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async getCurrentUser(): Promise<{
+    id: string
+    email: string
+    subdomain: string | null
+    full_name: string | null
+    is_active: boolean
+    created_at: string
+    updated_at: string
+  }> {
+    return this.request(`${API_VERSION}/auth/me`)
+  }
+
+  async claimSubdomain(subdomain: string): Promise<{
+    id: string
+    email: string
+    subdomain: string | null
+    full_name: string | null
+    is_active: boolean
+    created_at: string
+    updated_at: string
+  }> {
+    return this.request(`${API_VERSION}/auth/subdomain/claim`, {
+      method: 'POST',
+      body: JSON.stringify({ subdomain }),
+    })
+  }
+
+  async checkSubdomainAvailability(subdomain: string): Promise<{
+    subdomain: string
+    available: boolean
+    reason: string | null
+  }> {
+    return this.request(`${API_VERSION}/auth/subdomain/check/${subdomain}`)
   }
 
   // Agent endpoints
@@ -281,8 +352,19 @@ class APIClient {
     const headers: Record<string, string> = {
       'ngrok-skip-browser-warning': 'true', // Bypass ngrok browser warning page
     }
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`
+
+    // Use token from instance, or fall back to localStorage (resilient to hot reload)
+    const token =
+      this.token ||
+      (typeof window !== 'undefined' ? localStorage.getItem('melton_auth_token') : null)
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+
+      // If token was from localStorage, sync it to instance
+      if (!this.token && token) {
+        console.log('[APIClient] Token recovered from localStorage (uploadImage)')
+        this.token = token
+      }
     }
 
     const response = await fetch(url, {
@@ -302,51 +384,166 @@ class APIClient {
   // Playground WebSocket
   createPlaygroundConnection(agentId: string): WebSocket {
     const wsURL = this.baseURL.replace('http', 'ws')
-    return new WebSocket(`${wsURL}${API_VERSION}/playground/${agentId}`)
+    const token = this.token || this.getToken()
+    if (!token) {
+      throw new Error('Authentication required for playground')
+    }
+    return new WebSocket(
+      `${wsURL}${API_VERSION}/playground/${agentId}?token=${encodeURIComponent(token)}`
+    )
   }
 
   // Conversations endpoints
   async getConversations(
-    limit = 50,
-    offset = 0
-  ): Promise<{
-    conversations: Array<{
+    includeArchived = false,
+    limit = 50
+  ): Promise<
+    Array<{
       id: string
       agent_id: string
-      agent_name: string
+      user_id: string | null
       channel_type: string
-      message_count: number
-      preview: string
+      title: string | null
+      is_archived: boolean
+      last_message_preview: string | null
       created_at: string
       updated_at: string
     }>
-    total: number
-  }> {
-    return this.request(`${API_VERSION}/conversations?limit=${limit}&offset=${offset}`)
+  > {
+    return this.request(
+      `${API_VERSION}/conversations?include_archived=${includeArchived}&limit=${limit}`
+    )
   }
 
   async getConversation(conversationId: string): Promise<{
     id: string
     agent_id: string
-    agent_name: string
-    agent_instructions: string
-    agent_model_config: Record<string, unknown>
+    user_id: string | null
     channel_type: string
+    title: string | null
+    is_archived: boolean
+    last_message_preview: string | null
     created_at: string
     updated_at: string
-    messages: Array<{
-      id: string
-      role: string
-      content: string
-      tool_calls: Array<{
-        tool_name: string
-        input: Record<string, unknown>
-        output: Record<string, unknown>
-      }>
-      created_at: string
-    }>
   }> {
     return this.request(`${API_VERSION}/conversations/${conversationId}`)
+  }
+
+  async getConversationMessages(
+    conversationId: string,
+    limit = 50
+  ): Promise<{
+    messages: Array<{
+      role: string
+      content: string
+    }>
+  }> {
+    return this.request(`${API_VERSION}/conversations/${conversationId}/messages?limit=${limit}`)
+  }
+
+  async updateConversation(
+    conversationId: string,
+    updates: { title?: string; is_archived?: boolean }
+  ): Promise<{
+    id: string
+    agent_id: string
+    user_id: string | null
+    channel_type: string
+    title: string | null
+    is_archived: boolean
+    last_message_preview: string | null
+    created_at: string
+    updated_at: string
+  }> {
+    return this.request(`${API_VERSION}/conversations/${conversationId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    })
+  }
+
+  async deleteConversation(conversationId: string): Promise<{ message: string }> {
+    return this.request(`${API_VERSION}/conversations/${conversationId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async getAuditTrail(limit = 100): Promise<{ conversations: unknown[] }> {
+    return this.request(`${API_VERSION}/conversations/audit/all?limit=${limit}`)
+  }
+
+  // Permission endpoints
+  async grantPermission(
+    agentId: string,
+    userEmail: string,
+    permissionType: 'use' | 'admin'
+  ): Promise<{
+    user_id: string
+    email: string
+    full_name: string | null
+    permission_type: string
+    granted_at: string
+    granted_by: string
+  }> {
+    return this.request(`${API_VERSION}/agents/${agentId}/permissions`, {
+      method: 'POST',
+      body: JSON.stringify({ user_email: userEmail, permission_type: permissionType }),
+    })
+  }
+
+  async listAgentPermissions(agentId: string): Promise<
+    Array<{
+      user_id: string
+      email: string
+      full_name: string | null
+      permission_type: string
+      granted_at: string
+      granted_by: string
+    }>
+  > {
+    return this.request(`${API_VERSION}/agents/${agentId}/permissions`)
+  }
+
+  async revokePermission(agentId: string, userId: string): Promise<void> {
+    return this.request(`${API_VERSION}/agents/${agentId}/permissions/${userId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async generateShareCode(agentId: string): Promise<{
+    share_code: string
+    share_url: string
+  }> {
+    return this.request(`${API_VERSION}/agents/${agentId}/share-code`, {
+      method: 'POST',
+    })
+  }
+
+  async revokeShareCode(agentId: string): Promise<void> {
+    return this.request(`${API_VERSION}/agents/${agentId}/share-code`, {
+      method: 'DELETE',
+    })
+  }
+
+  async acceptShareCode(shareCode: string): Promise<{
+    agent_id: string
+    agent_name: string
+    message: string
+  }> {
+    return this.request(`${API_VERSION}/share/accept`, {
+      method: 'POST',
+      body: JSON.stringify({ share_code: shareCode }),
+    })
+  }
+
+  async listSharedAgents(): Promise<Array<import('@/lib/types').Agent>> {
+    return this.request(`${API_VERSION}/shared/agents`)
+  }
+
+  async getUserPermission(agentId: string): Promise<{
+    has_permission: boolean
+    permission_type: 'admin' | 'use' | null
+  }> {
+    return this.request(`${API_VERSION}/agents/${agentId}/my-permission`)
   }
 
   // Generic GET method for custom endpoints

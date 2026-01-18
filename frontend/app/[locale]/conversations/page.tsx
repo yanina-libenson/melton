@@ -1,41 +1,58 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
+import { use, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { apiClient } from '@/lib/api/client'
+import useSWR from 'swr'
+import type { Agent } from '@/lib/types'
+import { useAuth } from '@/lib/contexts/auth-context'
 
 interface Conversation {
   id: string
   agent_id: string
-  agent_name: string
+  user_id: string | null
   channel_type: string
-  message_count: number
-  preview: string
+  title: string | null
+  is_archived: boolean
+  last_message_preview: string | null
   created_at: string
   updated_at: string
 }
 
+interface ConversationWithAgent extends Conversation {
+  agent?: Agent
+}
+
 export default function ConversationsPage({ params }: { params: Promise<{ locale: string }> }) {
+  const router = useRouter()
   const resolvedParams = use(params)
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [loading, setLoading] = useState(true)
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
 
   useEffect(() => {
-    loadConversations()
-  }, [])
-
-  async function loadConversations() {
-    try {
-      const data = await apiClient.getConversations()
-      setConversations(data.conversations)
-    } catch (error) {
-      console.error('Failed to load conversations:', error)
-    } finally {
-      setLoading(false)
+    if (!authLoading && !isAuthenticated) {
+      router.push('/auth')
     }
-  }
+  }, [isAuthenticated, authLoading, router])
 
-  if (loading) {
+  // Fetch conversations
+  const {
+    data: conversations,
+    error,
+    isLoading,
+  } = useSWR<Conversation[]>('/conversations', () => apiClient.getConversations(false))
+
+  // Fetch agents for each conversation
+  const { data: agents } = useSWR<Agent[]>('/agents', () => apiClient.getAgents())
+
+  // Merge conversations with agent data
+  const conversationsWithAgents: ConversationWithAgent[] =
+    conversations?.map((conv) => ({
+      ...conv,
+      agent: agents?.find((agent) => agent.id === conv.agent_id),
+    })) || []
+
+  if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="text-muted-foreground">Loading conversations...</div>
@@ -43,46 +60,62 @@ export default function ConversationsPage({ params }: { params: Promise<{ locale
     )
   }
 
-  return (
-    <div className="container mx-auto max-w-6xl p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold">Conversations</h1>
-        <p className="text-muted-foreground mt-2">Debug and view all agent conversations</p>
+  if (error) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-destructive">Failed to load conversations</div>
       </div>
+    )
+  }
 
-      {conversations.length === 0 ? (
-        <div className="bg-muted rounded-lg border p-12 text-center">
-          <p className="text-muted-foreground">No conversations yet</p>
+  return (
+    <div className="bg-background min-h-screen">
+      <div className="mx-auto max-w-5xl px-8 py-16">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-foreground mb-2 text-4xl font-semibold tracking-tight">
+            Conversations
+          </h1>
+          <p className="text-muted-foreground text-sm">View and manage your agent conversations</p>
         </div>
-      ) : (
-        <div className="space-y-4">
-          {conversations.map((conv) => (
-            <Link
-              key={conv.id}
-              href={`/${resolvedParams.locale}/conversations/${conv.id}`}
-              className="bg-card hover:bg-accent block rounded-lg border p-6 transition-colors"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3">
-                    <h3 className="font-medium">{conv.agent_name}</h3>
-                    <span className="bg-primary/10 text-primary rounded px-2 py-0.5 text-xs">
-                      {conv.channel_type}
-                    </span>
-                    <span className="text-muted-foreground text-xs">
-                      {conv.message_count} messages
-                    </span>
+
+        {conversationsWithAgents.length === 0 ? (
+          <div className="border-border bg-card rounded-xl border p-12 text-center">
+            <p className="text-muted-foreground">No conversations yet</p>
+            <p className="text-muted-foreground mt-2 text-xs">
+              Start chatting with your agents to see your conversation history
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {conversationsWithAgents.map((conv) => (
+              <Link
+                key={conv.id}
+                href={`/${resolvedParams.locale}/agents/${conv.agent_id}?mode=use&conversation_id=${conv.id}`}
+                className="border-border bg-card hover:shadow-soft-lg group block rounded-xl border p-6 transition-all duration-200"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="mb-2 flex items-center gap-3">
+                      <h3 className="text-foreground group-hover:text-primary text-lg font-semibold transition-colors">
+                        {conv.title || 'New Conversation'}
+                      </h3>
+                    </div>
+                    {conv.agent && (
+                      <p className="text-muted-foreground mb-3 text-sm">with {conv.agent.name}</p>
+                    )}
+                    <div className="flex items-center gap-3">
+                      <span className="text-muted-foreground text-xs">
+                        {new Date(conv.updated_at).toLocaleString()}
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-muted-foreground mt-2 text-sm">{conv.preview}</p>
-                  <p className="text-muted-foreground mt-2 text-xs">
-                    {new Date(conv.updated_at).toLocaleString()}
-                  </p>
                 </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

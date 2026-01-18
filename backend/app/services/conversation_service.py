@@ -18,7 +18,11 @@ class ConversationService:
         self.session = session
 
     async def get_or_create_conversation(
-        self, agent_id: uuid.UUID, conversation_id: uuid.UUID | None, channel_type: str = "playground"
+        self,
+        agent_id: uuid.UUID,
+        conversation_id: uuid.UUID | None,
+        channel_type: str = "playground",
+        user_id: uuid.UUID | None = None,
     ) -> Conversation:
         """Get existing conversation or create new one."""
         if conversation_id:
@@ -30,6 +34,7 @@ class ConversationService:
         conversation = Conversation(
             agent_id=agent_id,
             channel_type=channel_type,
+            user_id=user_id,
         )
         self.session.add(conversation)
         await self.session.flush()
@@ -98,4 +103,75 @@ class ConversationService:
         await self.session.flush()
         await self.session.refresh(message)
 
+        # Update conversation's last_message_preview and updated_at
+        conversation = await self.get_conversation_by_id(conversation_id)
+        if conversation:
+            # Truncate content for preview (max 200 chars)
+            preview = content[:200] + "..." if len(content) > 200 else content
+            conversation.last_message_preview = preview
+            conversation.updated_at = datetime.utcnow()
+
+            # Auto-generate title from first user message if not already set
+            if role == "user" and not conversation.title:
+                title = await self.generate_conversation_title(conversation_id)
+                conversation.title = title
+
+            await self.session.flush()
+
         return message
+
+    async def list_user_conversations(
+        self, user_id: uuid.UUID, include_archived: bool = False, limit: int = 50
+    ) -> list[Conversation]:
+        """List conversations for a user."""
+        query = select(Conversation).where(Conversation.user_id == user_id)
+
+        if not include_archived:
+            query = query.where(Conversation.is_archived == False)
+
+        query = query.order_by(Conversation.updated_at.desc()).limit(limit)
+
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
+    async def update_conversation_title(self, conversation_id: uuid.UUID, title: str) -> None:
+        """Update conversation title."""
+        conversation = await self.get_conversation_by_id(conversation_id)
+        if conversation:
+            conversation.title = title
+            await self.session.flush()
+
+    async def archive_conversation(self, conversation_id: uuid.UUID) -> None:
+        """Archive a conversation."""
+        conversation = await self.get_conversation_by_id(conversation_id)
+        if conversation:
+            conversation.is_archived = True
+            await self.session.flush()
+
+    async def unarchive_conversation(self, conversation_id: uuid.UUID) -> None:
+        """Unarchive a conversation."""
+        conversation = await self.get_conversation_by_id(conversation_id)
+        if conversation:
+            conversation.is_archived = False
+            await self.session.flush()
+
+    async def generate_conversation_title(self, conversation_id: uuid.UUID) -> str:
+        """Generate a title for the conversation based on first message."""
+        query = (
+            select(Message)
+            .where(Message.conversation_id == conversation_id)
+            .where(Message.role == "user")
+            .order_by(Message.created_at.asc())
+            .limit(1)
+        )
+        result = await self.session.execute(query)
+        first_message = result.scalar_one_or_none()
+
+        if first_message:
+            # Use first 50 chars of first user message as title
+            title = first_message.content[:50]
+            if len(first_message.content) > 50:
+                title += "..."
+            return title
+
+        return "New Conversation"

@@ -22,7 +22,7 @@ class AgentService:
     async def create_agent(
         self, user_id: uuid.UUID, organization_id: uuid.UUID, agent_data: AgentCreate
     ) -> Agent:
-        """Create a new agent."""
+        """Create a new agent and grant admin permission to creator."""
         agent = Agent(
             user_id=user_id,
             organization_id=organization_id,
@@ -35,6 +35,18 @@ class AgentService:
         self.session.add(agent)
         await self.session.flush()
         await self.session.refresh(agent, ["integrations"])
+
+        # Grant admin permission to creator
+        from app.models.agent_permission import AgentPermission
+
+        permission = AgentPermission(
+            agent_id=agent.id,
+            user_id=user_id,
+            granted_by=user_id,
+            permission_type="admin",
+        )
+        self.session.add(permission)
+        await self.session.flush()
 
         return agent
 

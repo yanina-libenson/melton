@@ -30,6 +30,8 @@ pyyaml = "^6.0.2"  # OpenAPI parsing
 python-multipart = "^0.0.18"  # Form data parsing
 websockets = "^14.1"  # WebSocket support
 jsonpath-ng = "^1.7.0"
+email-validator = "^2.3.0"
+bcrypt = "3.2.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"

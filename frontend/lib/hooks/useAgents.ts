@@ -9,9 +9,9 @@ import useSWR from 'swr'
 import { apiClient, APIError } from '@/lib/api/client'
 import type { Agent } from '@/lib/types'
 
-export function useAgents() {
+export function useAgents(shouldFetch: boolean = true) {
   const { data, error, isLoading, mutate } = useSWR<Agent[]>(
-    '/agents',
+    shouldFetch ? '/agents' : null,
     () => apiClient.getAgents(),
     {
       revalidateOnFocus: true,

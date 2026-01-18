@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, use, useRef, useEffect } from 'react'
+import { useState, use, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
@@ -25,6 +25,9 @@ import Link from 'next/link'
 import Image from 'next/image'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { AgentPermissions } from '@/components/agent-permissions'
+import { AgentShareLink } from '@/components/agent-share-link'
+import { useAuth } from '@/lib/contexts/auth-context'
 
 export default function AgentPage({ params }: { params: Promise<{ id: string; locale: string }> }) {
   const t = useTranslations('agentDetail')
@@ -32,7 +35,15 @@ export default function AgentPage({ params }: { params: Promise<{ id: string; lo
   const tCommon = useTranslations('common')
   const resolvedParams = use(params)
   const router = useRouter()
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
   const isNewAgent = resolvedParams.id === 'new'
+
+  // Redirect to auth if not authenticated
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/auth')
+    }
+  }, [isAuthenticated, authLoading, router])
 
   // Redirect to Agent Builder if user is creating a new agent
   useEffect(() => {
@@ -58,6 +69,15 @@ export default function AgentPage({ params }: { params: Promise<{ id: string; lo
 
   const { createAgent, updateAgent } = useAgentMutations()
 
+  // Fetch user's permission for this agent
+  const { data: userPermission } = useSWR(
+    isNewAgent ? null : `/agents/${resolvedParams.id}/my-permission`,
+    () => apiClient.getUserPermission(resolvedParams.id)
+  )
+
+  const isAdmin = userPermission?.permission_type === 'admin'
+  const hasUsePermission = userPermission?.permission_type === 'use'
+
   // Fetch available LLM models
   const { data: llmModels, isLoading: modelsLoading } = useSWR<LLMModel[]>('/llm-models', () =>
     apiClient.getLLMModels()
@@ -67,8 +87,18 @@ export default function AgentPage({ params }: { params: Promise<{ id: string; lo
   const searchParams = new URLSearchParams(
     typeof window !== 'undefined' ? window.location.search : ''
   )
-  const initialTab = searchParams.get('tab') === 'test' ? 'test' : 'configure'
+  const mode = searchParams.get('mode') // 'use' mode from shared agents page
+  const conversationId = searchParams.get('conversation_id') // Resume existing conversation
+  const initialTab = searchParams.get('tab') === 'test' || mode === 'use' ? 'test' : 'configure'
   const [activeTab, setActiveTab] = useState<'configure' | 'test'>(initialTab)
+  const forceUseMode = mode === 'use' // Force use mode even if user is admin
+
+  // If user only has 'use' permission OR forceUseMode is true, force them to 'test' tab
+  useEffect(() => {
+    if ((hasUsePermission && !isAdmin) || forceUseMode) {
+      setActiveTab('test')
+    }
+  }, [hasUsePermission, isAdmin, forceUseMode])
 
   // Local state for editing
   const [agent, setAgent] = useState<Agent | null>(null)
@@ -115,14 +145,61 @@ export default function AgentPage({ params }: { params: Promise<{ id: string; lo
   }, [agent, fetchedAgent, isNewAgent])
 
   // Test/Playground state
+  // Initial welcome message - different for use mode vs admin mode
+  const getWelcomeMessage = useCallback(() => {
+    if ((hasUsePermission && !isAdmin) || forceUseMode) {
+      return 'Iniciá una conversación enviando un mensaje.'
+    }
+    return tTest('welcomeMessage')
+  }, [hasUsePermission, isAdmin, forceUseMode, tTest])
+
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'msg-welcome',
       role: 'system',
-      content: tTest('welcomeMessage'),
+      content: getWelcomeMessage(),
       timestamp: new Date().toISOString(),
     },
   ])
+
+  // Load conversation history if conversation_id is provided
+  useEffect(() => {
+    if (conversationId) {
+      apiClient
+        .getConversationMessages(conversationId)
+        .then((data) => {
+          const historyMessages: Message[] = data.messages.map((msg, index) => ({
+            id: `msg-${index}`,
+            role: (msg.role === 'assistant' ? 'agent' : msg.role) as 'user' | 'agent' | 'system',
+            content: msg.content,
+            timestamp: new Date().toISOString(),
+          }))
+          setMessages(historyMessages)
+        })
+        .catch((error) => {
+          console.error('Failed to load conversation history:', error)
+          // Fall back to welcome message on error
+          setMessages([
+            {
+              id: 'msg-welcome',
+              role: 'system',
+              content: getWelcomeMessage(),
+              timestamp: new Date().toISOString(),
+            },
+          ])
+        })
+    } else {
+      // No conversation ID, show welcome message
+      setMessages([
+        {
+          id: 'msg-welcome',
+          role: 'system',
+          content: getWelcomeMessage(),
+          timestamp: new Date().toISOString(),
+        },
+      ])
+    }
+  }, [conversationId, getWelcomeMessage])
   const [inputMessage, setInputMessage] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<FileAttachment[]>([])
   const [isUploadingFiles, setIsUploadingFiles] = useState(false)
@@ -282,7 +359,7 @@ export default function AgentPage({ params }: { params: Promise<{ id: string; lo
     )
       return
 
-    playground.sendMessage(inputMessage, attachedFiles)
+    playground.sendMessage(inputMessage, attachedFiles, conversationId || undefined)
     setInputMessage('')
     setAttachedFiles([])
   }
@@ -331,53 +408,67 @@ export default function AgentPage({ params }: { params: Promise<{ id: string; lo
       <div className="mx-auto max-w-3xl px-8 py-16">
         {/* Back Button */}
         <Link
-          href="/agents"
+          href={(hasUsePermission && !isAdmin) || forceUseMode ? '/shared-agents' : '/agents'}
           className="text-muted-foreground hover:text-foreground mb-8 inline-flex items-center gap-1 transition-colors"
         >
           <span>←</span>
         </Link>
 
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-foreground mb-2 text-4xl font-semibold tracking-tight">
-            {isNewAgent ? t('newAgent') : agent.name}
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            {isNewAgent ? t('createSubtitle') : t('configureSubtitle')}
-          </p>
-        </div>
+        {/* Header - Hide subtitle in use mode */}
+        {!((hasUsePermission && !isAdmin) || forceUseMode) && (
+          <div className="mb-8">
+            <h1 className="text-foreground mb-2 text-4xl font-semibold tracking-tight">
+              {isNewAgent ? t('newAgent') : agent.name}
+            </h1>
+            <p className="text-muted-foreground text-sm">
+              {isNewAgent ? t('createSubtitle') : t('configureSubtitle')}
+            </p>
+          </div>
+        )}
 
-        {/* Tabs */}
-        <div className="border-border mb-12 flex gap-6 border-b">
-          <button
-            onClick={() => setActiveTab('configure')}
-            className={`pb-3 text-sm font-medium transition-colors ${
-              activeTab === 'configure'
-                ? 'text-foreground border-foreground border-b-2'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <span className="flex items-center gap-1.5">
-              {t('tabConfigure')}
-              {hasUnsavedChanges && (
-                <span className="text-xs text-yellow-600 dark:text-yellow-500">●</span>
-              )}
-            </span>
-          </button>
-          <button
-            onClick={() => setActiveTab('test')}
-            className={`pb-3 text-sm font-medium transition-colors ${
-              activeTab === 'test'
-                ? 'text-foreground border-foreground border-b-2'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {t('tabTest')}
-          </button>
-        </div>
+        {/* Tabs - Hide for users with only 'use' permission OR when in force use mode */}
+        {!hasUsePermission && !forceUseMode && (
+          <div className="border-border mb-12 flex gap-6 border-b">
+            <button
+              onClick={() => setActiveTab('configure')}
+              className={`pb-3 text-sm font-medium transition-colors ${
+                activeTab === 'configure'
+                  ? 'text-foreground border-foreground border-b-2'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <span className="flex items-center gap-1.5">
+                {t('tabConfigure')}
+                {hasUnsavedChanges && (
+                  <span className="text-xs text-yellow-600 dark:text-yellow-500">●</span>
+                )}
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab('test')}
+              className={`pb-3 text-sm font-medium transition-colors ${
+                activeTab === 'test'
+                  ? 'text-foreground border-foreground border-b-2'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t('tabTest')}
+            </button>
+          </div>
+        )}
 
-        {/* Configure Tab */}
-        {activeTab === 'configure' && (
+        {/* Live Chat Header for users with 'use' permission OR when in force use mode */}
+        {((hasUsePermission && !isAdmin) || forceUseMode) && (
+          <div className="mb-8">
+            <h2 className="text-foreground text-2xl font-semibold">Live Chat</h2>
+            <p className="text-muted-foreground mt-1 text-sm">
+              Chat with {agent?.name || 'this agent'}
+            </p>
+          </div>
+        )}
+
+        {/* Configure Tab - Only for admin users and not in force use mode */}
+        {activeTab === 'configure' && isAdmin && !forceUseMode && (
           <div>
             {/* Agent Name */}
             <div className="mb-12">
@@ -576,6 +667,19 @@ export default function AgentPage({ params }: { params: Promise<{ id: string; lo
               </Link>
             </div>
 
+            {/* Sharing & Permissions - Only show for existing agents with admin permission and not in force use mode */}
+            {!isNewAgent && isAdmin && !forceUseMode && (
+              <>
+                <div className="mb-12">
+                  <AgentPermissions agentId={resolvedParams.id} />
+                </div>
+
+                <div className="mb-12">
+                  <AgentShareLink agentId={resolvedParams.id} />
+                </div>
+              </>
+            )}
+
             {/* Actions */}
             <div className="border-border flex items-center justify-between border-t pt-8">
               <Link
@@ -594,8 +698,8 @@ export default function AgentPage({ params }: { params: Promise<{ id: string; lo
         {/* Test Tab */}
         {activeTab === 'test' && (
           <div className="flex flex-col">
-            {/* Unsaved Changes Warning */}
-            {hasUnsavedChanges && (
+            {/* Unsaved Changes Warning - Only for admin users not in use mode */}
+            {hasUnsavedChanges && !((hasUsePermission && !isAdmin) || forceUseMode) && (
               <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-yellow-800 dark:border-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
                 <div className="flex items-start gap-3">
                   <span className="text-lg">⚠️</span>
@@ -873,7 +977,11 @@ export default function AgentPage({ params }: { params: Promise<{ id: string; lo
                   )}
                 </Button>
                 <Input
-                  placeholder={tTest('messagePlaceholder')}
+                  placeholder={
+                    (hasUsePermission && !isAdmin) || forceUseMode
+                      ? 'Escribí un mensaje...'
+                      : tTest('messagePlaceholder')
+                  }
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
                   onKeyDown={handleKeyDown}

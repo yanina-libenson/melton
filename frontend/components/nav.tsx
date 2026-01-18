@@ -1,15 +1,26 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { PLATFORM_INTEGRATIONS } from '@/lib/platforms'
 import { LanguageSwitcher } from './language-switcher'
 import { useAgent } from '@/lib/hooks/useAgents'
+import { useAuth } from '@/lib/contexts/auth-context'
 
 export function Nav() {
   const pathname = usePathname()
   const t = useTranslations('nav')
+  const { isAuthenticated, isLoading, logout, user } = useAuth()
+
+  // Debug logging
+  console.log('[Nav] Render:', {
+    pathname,
+    isAuthenticated,
+    isLoading,
+    userEmail: user?.email,
+  })
 
   // Remove locale prefix from pathname for matching
   const pathWithoutLocale = pathname.replace(/^\/(en|es-AR)/, '') || '/'
@@ -68,7 +79,7 @@ export function Nav() {
     return crumbs
   }
 
-  const breadcrumbs = getBreadcrumbs()
+  const breadcrumbs = isAuthenticated ? getBreadcrumbs() : []
 
   return (
     <nav className="bg-background/80 border-border fixed top-0 right-0 left-0 z-50 border-b backdrop-blur-md">
@@ -76,49 +87,85 @@ export function Nav() {
         <div className="flex h-14 items-center justify-between">
           <div className="flex items-center gap-8">
             {/* Logo */}
-            <Link
-              href="/agents"
-              className="text-foreground hover:text-foreground/90 transition-colors"
-            >
-              <span className="font-signature text-2xl font-bold">{t('logo')}</span>
+            <Link href="/" className="transition-opacity hover:opacity-80">
+              <Image
+                src="/melton-logo.png"
+                alt="Melton"
+                width={150}
+                height={40}
+                priority
+                className="h-8 w-auto"
+              />
             </Link>
 
-            {/* Breadcrumbs */}
-            <div className="flex items-center gap-2">
-              {breadcrumbs.map((crumb, index) => (
-                <div key={crumb.href} className="flex items-center gap-2">
-                  <Link
-                    href={crumb.href}
-                    className={`text-sm transition-colors ${
-                      index === breadcrumbs.length - 1
-                        ? 'text-foreground font-medium'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {crumb.label}
-                  </Link>
-                  {index < breadcrumbs.length - 1 && (
-                    <span className="text-muted-foreground">›</span>
-                  )}
-                </div>
-              ))}
-            </div>
+            {/* Breadcrumbs - Only show when authenticated */}
+            {isAuthenticated && (
+              <div className="flex items-center gap-2">
+                {breadcrumbs.map((crumb, index) => (
+                  <div key={crumb.href} className="flex items-center gap-2">
+                    <Link
+                      href={crumb.href}
+                      className={`text-sm transition-colors ${
+                        index === breadcrumbs.length - 1
+                          ? 'text-foreground font-medium'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {crumb.label}
+                    </Link>
+                    {index < breadcrumbs.length - 1 && (
+                      <span className="text-muted-foreground">›</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex min-w-[200px] items-center justify-end gap-4">
             <LanguageSwitcher />
-            <Link
-              href="/conversations"
-              className="text-muted-foreground hover:text-foreground text-sm whitespace-nowrap transition-colors"
-            >
-              Conversations
-            </Link>
-            <Link
-              href="/settings"
-              className="text-muted-foreground hover:text-foreground text-sm whitespace-nowrap transition-colors"
-            >
-              {t('settings')}
-            </Link>
+            {isAuthenticated && (
+              <>
+                <Link
+                  href="/shared-agents"
+                  className="text-muted-foreground hover:text-foreground text-sm whitespace-nowrap transition-colors"
+                >
+                  Shared with Me
+                </Link>
+                <Link
+                  href="/conversations"
+                  className="text-muted-foreground hover:text-foreground text-sm whitespace-nowrap transition-colors"
+                >
+                  Conversations
+                </Link>
+                <Link
+                  href="/audit"
+                  className="text-muted-foreground hover:text-foreground text-sm whitespace-nowrap transition-colors"
+                >
+                  Audit
+                </Link>
+                <Link
+                  href="/settings"
+                  className="text-muted-foreground hover:text-foreground text-sm whitespace-nowrap transition-colors"
+                >
+                  {t('settings')}
+                </Link>
+                <button
+                  onClick={logout}
+                  className="text-muted-foreground hover:text-foreground text-sm whitespace-nowrap transition-colors"
+                >
+                  Sign Out
+                </button>
+              </>
+            )}
+            {!isAuthenticated && !isLoading && (
+              <Link
+                href="/auth"
+                className="text-muted-foreground hover:text-foreground text-sm whitespace-nowrap transition-colors"
+              >
+                Sign In
+              </Link>
+            )}
           </div>
         </div>
       </div>

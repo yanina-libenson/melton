@@ -305,6 +305,13 @@ export const PLATFORM_TOOLS: Record<string, Tool[]> = {
       sourceId: 'mercadolibre',
     },
     {
+      id: 'ml-search',
+      name: 'Marketplace Search',
+      description:
+        'Search for products in the marketplace to compare prices and find similar items',
+      sourceId: 'mercadolibre',
+    },
+    {
       id: 'ml-sizegrids',
       name: 'Size Grids',
       description: 'Manage size charts required for fashion items',

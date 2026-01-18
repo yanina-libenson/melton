@@ -65,5 +65,9 @@ class Settings(BaseSettings):
     tool_execution_timeout: int = 30  # seconds
     max_tool_retries: int = 3
 
+    # Subdomain deployment
+    subdomain_enabled: bool = True
+    base_domain: str = "melton.com"
+
 
 settings = Settings()

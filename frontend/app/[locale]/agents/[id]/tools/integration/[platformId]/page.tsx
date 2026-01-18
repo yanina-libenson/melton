@@ -141,6 +141,10 @@ export default function IntegrationConfigPage({
       ) {
         isCreatingIntegration.current = true
         try {
+          console.log(
+            '[Integration] Creating OAuth integration for platform:',
+            resolvedParams.platformId
+          )
           const integrationData = {
             agent_id: resolvedParams.id,
             type: 'platform' as const,
@@ -151,9 +155,10 @@ export default function IntegrationConfigPage({
           }
 
           const integration = await apiClient.createIntegration(integrationData)
+          console.log('[Integration] Integration created successfully:', integration.id)
           setIntegrationId(integration.id)
         } catch (error) {
-          console.error('Failed to create integration:', error)
+          console.error('[Integration] Failed to create integration:', error)
           toast.error('Failed to initialize OAuth integration')
           isCreatingIntegration.current = false
         }

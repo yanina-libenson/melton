@@ -40,8 +40,10 @@ export default function OAuthCallbackPage({ params }: { params: Promise<{ platfo
       console.log('[OAuth Callback] code:', code ? 'present' : 'missing')
       console.log('[OAuth Callback] state:', state ? 'present' : 'missing')
       console.log('[OAuth Callback] isPopup:', isPopup)
+      console.log('[OAuth Callback] window.opener exists:', !!window.opener)
 
       if (!isPopup) {
+        console.error('[OAuth Callback] Not a popup! window.opener is missing')
         setMessage('This page should only be accessed via OAuth popup flow.')
         return
       }
@@ -83,6 +85,7 @@ export default function OAuthCallbackPage({ params }: { params: Promise<{ platfo
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }))
             console.error('[OAuth Callback] Error response:', errorData)
+            console.error('[OAuth Callback] About to send error postMessage to parent')
             throw new Error(errorData.detail || 'Token exchange failed')
           }
 
@@ -90,8 +93,11 @@ export default function OAuthCallbackPage({ params }: { params: Promise<{ platfo
           console.log('[OAuth Callback] Success! Integration ID:', data.integration_id)
 
           // Send success message to parent
+          console.log('[OAuth Callback] window.opener exists:', !!window.opener)
+          console.log('[OAuth Callback] window.location.origin:', window.location.origin)
+          console.log('[OAuth Callback] About to send success postMessage')
+
           if (window.opener) {
-            console.log('[OAuth Callback] Sending postMessage to parent')
             window.opener.postMessage(
               {
                 type: 'oauth_callback',
@@ -100,6 +106,7 @@ export default function OAuthCallbackPage({ params }: { params: Promise<{ platfo
               },
               '*' // Use wildcard for ngrok compatibility
             )
+            console.log('[OAuth Callback] Success postMessage sent')
           } else {
             console.warn('[OAuth Callback] No window.opener found!')
           }
@@ -109,7 +116,10 @@ export default function OAuthCallbackPage({ params }: { params: Promise<{ platfo
           setTimeout(() => window.close(), 3000)
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : 'Unknown error'
-          console.error('[OAuth Callback] Error:', errorMsg, err)
+          console.error('[OAuth Callback] Caught error:', errorMsg, err)
+          console.error('[OAuth Callback] window.opener exists:', !!window.opener)
+          console.error('[OAuth Callback] window.location.origin:', window.location.origin)
+          console.error('[OAuth Callback] About to send error postMessage')
 
           if (window.opener) {
             window.opener.postMessage(
@@ -120,9 +130,16 @@ export default function OAuthCallbackPage({ params }: { params: Promise<{ platfo
               },
               '*'
             )
+            console.error('[OAuth Callback] Error postMessage sent')
+          } else {
+            console.error('[OAuth Callback] Cannot send error - no window.opener!')
           }
+
           setMessage(`Authorization failed: ${errorMsg}`)
-          setTimeout(() => window.close(), 1500)
+          setTimeout(() => {
+            console.error('[OAuth Callback] Closing popup after error')
+            window.close()
+          }, 1500)
         }
       } else {
         console.error('[OAuth Callback] Missing parameters:', { code, state, platformId })

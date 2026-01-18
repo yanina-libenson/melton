@@ -128,6 +128,7 @@ class ToolFactory:
                 MercadoLibreCategoriesTool,
                 MercadoLibrePublicationsTool,
                 MercadoLibreQuestionsTool,
+                MercadoLibreSearchTool,
                 MercadoLibreSizeGridsTool,
             )
 
@@ -146,6 +147,12 @@ class ToolFactory:
                 )
             elif "categor" in tool_name or tool_name == "ml-categories":
                 return MercadoLibreCategoriesTool(
+                    tool_id=str(tool_model.id),
+                    tool_config=tool_model.config,
+                    integration=tool_model.integration,
+                )
+            elif "search" in tool_name or tool_name == "ml-search":
+                return MercadoLibreSearchTool(
                     tool_id=str(tool_model.id),
                     tool_config=tool_model.config,
                     integration=tool_model.integration,

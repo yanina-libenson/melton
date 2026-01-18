@@ -144,7 +144,13 @@ export function usePlayground({
 
   const sendMessage = useCallback(
     (content: string, attachments?: FileAttachment[], explicitConversationId?: string) => {
+      console.log('[Playground] sendMessage called:', { content, attachments, conversationId })
+
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        console.error('[Playground] WebSocket not connected:', {
+          exists: !!wsRef.current,
+          readyState: wsRef.current?.readyState,
+        })
         if (onError) {
           onError('Not connected')
         }
@@ -158,7 +164,19 @@ export function usePlayground({
         conversation_id: explicitConversationId || conversationId || null,
       }
 
-      wsRef.current.send(JSON.stringify(message))
+      console.log('[Playground] Sending message:', message)
+      console.log('[Playground] Message size:', JSON.stringify(message).length, 'bytes')
+
+      try {
+        wsRef.current.send(JSON.stringify(message))
+        console.log('[Playground] Message sent successfully')
+      } catch (error) {
+        console.error('[Playground] Error sending message:', error)
+        if (onError) {
+          onError('Failed to send message')
+        }
+        return
+      }
 
       // Create user message for UI
       if (onMessage) {
