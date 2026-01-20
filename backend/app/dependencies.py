@@ -3,7 +3,7 @@
 import uuid
 from typing import Annotated
 
-import jwt
+from jose import jwt, JWTError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -45,7 +45,7 @@ async def get_current_user(
         token = credentials.credentials
         user_info = AuthService.verify_token(token)
         return user_info
-    except jwt.InvalidTokenError as e:
+    except JWTError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid authentication credentials: {str(e)}",

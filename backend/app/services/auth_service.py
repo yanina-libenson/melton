@@ -4,7 +4,7 @@ import re
 import uuid
 from datetime import datetime, timedelta
 
-import jwt
+from jose import jwt, JWTError
 from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -83,15 +83,15 @@ class AuthService:
             Dictionary with user_id and organization_id
 
         Raises:
-            jwt.InvalidTokenError: If token is invalid or expired
+            JWTError: If token is invalid or expired
         """
         try:
             payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
             user_id = uuid.UUID(payload["user_id"])
             organization_id = uuid.UUID(payload["organization_id"])
             return {"user_id": user_id, "organization_id": organization_id}
-        except (jwt.InvalidTokenError, KeyError, ValueError) as e:
-            raise jwt.InvalidTokenError(f"Invalid token: {e}")
+        except (JWTError, KeyError, ValueError) as e:
+            raise JWTError(f"Invalid token: {e}")
 
     async def register_user(
         self, email: str, password: str, full_name: str | None = None
