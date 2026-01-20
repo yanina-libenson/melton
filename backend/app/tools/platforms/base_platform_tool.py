@@ -2,15 +2,11 @@
 
 import asyncio
 import logging
-import uuid
 from abc import ABC
-from datetime import datetime
 from typing import Any
 
 import httpx
-from redis import asyncio as aioredis
 
-from app.config import settings
 from app.models.integration import Integration
 from app.tools.base_tool import BaseTool
 
@@ -50,52 +46,27 @@ class BasePlatformTool(BaseTool, ABC):
 
     async def _get_cached(self, cache_key: str, ttl: int = 3600) -> dict[str, Any] | None:
         """
-        Get cached data from Redis.
+        Get cached data (no-op without Redis).
 
         Args:
             cache_key: Cache key
-            ttl: Time to live in seconds (default: 1 hour)
+            ttl: Time to live in seconds (unused)
 
         Returns:
-            Cached data or None if not found
+            None (caching disabled)
         """
-        try:
-            import json
-
-            redis = await aioredis.from_url(settings.redis_url)
-            try:
-                cached = await redis.get(cache_key)
-                if cached:
-                    logger.debug(f"Cache hit for key: {cache_key}")
-                    return json.loads(cached)
-                logger.debug(f"Cache miss for key: {cache_key}")
-                return None
-            finally:
-                await redis.close()
-        except Exception as e:
-            logger.warning(f"Cache get failed for key {cache_key}: {e}")
-            return None
+        return None
 
     async def _set_cache(self, cache_key: str, data: dict[str, Any], ttl: int = 3600) -> None:
         """
-        Set cached data in Redis.
+        Set cached data (no-op without Redis).
 
         Args:
             cache_key: Cache key
-            data: Data to cache
-            ttl: Time to live in seconds (default: 1 hour)
+            data: Data to cache (unused)
+            ttl: Time to live in seconds (unused)
         """
-        try:
-            import json
-
-            redis = await aioredis.from_url(settings.redis_url)
-            try:
-                await redis.setex(cache_key, ttl, json.dumps(data))
-                logger.debug(f"Cache set for key: {cache_key} with TTL: {ttl}s")
-            finally:
-                await redis.close()
-        except Exception as e:
-            logger.warning(f"Cache set failed for key {cache_key}: {e}")
+        pass
 
     async def _get_access_token(self) -> str:
         """
@@ -130,41 +101,6 @@ class BasePlatformTool(BaseTool, ABC):
             # Decrypt and return token
             return await cred_service.decrypt_token(credential)
 
-    async def _check_rate_limit(self) -> None:
-        """
-        Check and enforce rate limits using Redis.
-
-        Raises:
-            Exception: If rate limit exceeded
-        """
-        try:
-            redis = await aioredis.from_url(settings.redis_url)
-            try:
-                rate_limit_key = f"rate_limit:{self.platform_id}:{self.integration.id}"
-
-                # Get current count
-                current = await redis.get(rate_limit_key)
-                current_count = int(current) if current else 0
-
-                # Check limit (1500 requests per minute for MercadoLibre)
-                if current_count >= 1500:
-                    logger.warning(f"Rate limit exceeded for {self.platform_id} integration {self.integration.id}")
-                    raise Exception("Rate limit exceeded. Please wait before making more requests.")
-
-                # Increment counter
-                pipe = redis.pipeline()
-                pipe.incr(rate_limit_key)
-                if current_count == 0:
-                    # Set expiry on first request
-                    pipe.expire(rate_limit_key, 60)
-                await pipe.execute()
-
-            finally:
-                await redis.close()
-        except Exception as e:
-            # Log but don't fail request if Redis is down
-            logger.warning(f"Rate limit check failed: {e}")
-
     async def _make_authenticated_request(
         self,
         method: str,
@@ -173,7 +109,7 @@ class BasePlatformTool(BaseTool, ABC):
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
-        Make HTTP request with automatic token refresh, retry logic, and rate limiting.
+        Make HTTP request with automatic token refresh and retry logic.
 
         Args:
             method: HTTP method (GET, POST, etc.)
@@ -187,9 +123,6 @@ class BasePlatformTool(BaseTool, ABC):
         Raises:
             httpx.HTTPStatusError: For non-2xx responses after all retries
         """
-        # Check rate limit
-        await self._check_rate_limit()
-
         # Get access token
         access_token = await self._get_access_token()
 
@@ -225,48 +158,29 @@ class BasePlatformTool(BaseTool, ABC):
                 if e.response.status_code == 401:
                     logger.info(f"Received 401, refreshing token for integration {self.integration.id}")
 
-                    # Force token refresh with lock to prevent race condition
+                    # Force token refresh
                     from app.services.oauth_service import OAuthService
                     from app.database import get_database_session
 
                     async for session in get_database_session():
                         oauth_service = OAuthService(session)
+                        new_token = await oauth_service.refresh_token(self.integration.id)
 
-                        # Use Redis lock to prevent concurrent refreshes
-                        redis = await aioredis.from_url(settings.redis_url)
-                        lock_key = f"token_refresh_lock:{self.integration.id}"
+                        # Retry request with new token
+                        headers["Authorization"] = f"Bearer {new_token}"
+                        async with httpx.AsyncClient(timeout=30.0) as retry_client:
+                            retry_response = await retry_client.request(
+                                method=method.upper(),
+                                url=url,
+                                headers=headers,
+                                **kwargs,
+                            )
+                            retry_response.raise_for_status()
 
-                        try:
-                            # Try to acquire lock
-                            lock_acquired = await redis.set(lock_key, "1", nx=True, ex=10)
-
-                            if lock_acquired:
-                                # We acquired the lock, perform refresh
-                                logger.info(f"Acquired refresh lock for integration {self.integration.id}")
-                                new_token = await oauth_service.refresh_token(self.integration.id)
-                            else:
-                                # Another process is refreshing, wait and get fresh token
-                                logger.info(f"Waiting for token refresh by another process")
-                                await asyncio.sleep(1)
-                                new_token = await self._get_access_token()
-
-                            # Retry request with new token in a NEW client context
-                            headers["Authorization"] = f"Bearer {new_token}"
-                            async with httpx.AsyncClient(timeout=30.0) as retry_client:
-                                retry_response = await retry_client.request(
-                                    method=method.upper(),
-                                    url=url,
-                                    headers=headers,
-                                    **kwargs,
-                                )
-                                retry_response.raise_for_status()
-
-                                try:
-                                    return retry_response.json()
-                                except Exception:
-                                    return {}
-                        finally:
-                            await redis.close()
+                            try:
+                                return retry_response.json()
+                            except Exception:
+                                return {}
 
                 # If 429 (rate limit), wait and retry
                 elif e.response.status_code == 429:
@@ -298,8 +212,19 @@ class BasePlatformTool(BaseTool, ABC):
                 else:
                     logger.error(f"API error {e.response.status_code}: {url}")
 
+                    # For 403 (Forbidden), include error details
+                    if e.response.status_code == 403:
+                        try:
+                            error_body = e.response.json()
+                            logger.error(f"403 Forbidden response: {error_body}")
+                            error_msg = error_body.get("message") or error_body.get("error") or str(error_body)
+                            raise Exception(f"Access denied (HTTP 403): {error_msg}")
+                        except Exception:
+                            error_text = e.response.text[:500] if hasattr(e.response, 'text') else "Access denied"
+                            raise Exception(f"Access denied (HTTP 403): {error_text}")
+
                     # For 400 (Bad Request), include error details as they contain validation info
-                    if e.response.status_code == 400:
+                    elif e.response.status_code == 400:
                         try:
                             error_body = e.response.json()
                             # Extract meaningful error information

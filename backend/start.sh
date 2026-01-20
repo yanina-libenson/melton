@@ -24,32 +24,18 @@ if [ ! -f .env ]; then
 fi
 
 # Start Docker services
-echo "📦 Starting Docker services (PostgreSQL + Redis)..."
+echo "📦 Starting Docker services (PostgreSQL)..."
 docker-compose up -d
 
 # Wait for PostgreSQL to be ready
 echo "⏳ Waiting for PostgreSQL to be ready..."
 for i in {1..30}; do
-    if docker exec melton-postgres pg_isready -U melton > /dev/null 2>&1; then
+    if docker exec melton_postgres pg_isready -U melton > /dev/null 2>&1; then
         echo "✅ PostgreSQL is ready!"
         break
     fi
     if [ $i -eq 30 ]; then
         echo "❌ PostgreSQL failed to start"
-        exit 1
-    fi
-    sleep 1
-done
-
-# Wait for Redis to be ready
-echo "⏳ Waiting for Redis to be ready..."
-for i in {1..30}; do
-    if docker exec melton-redis redis-cli ping > /dev/null 2>&1; then
-        echo "✅ Redis is ready!"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        echo "❌ Redis failed to start"
         exit 1
     fi
     sleep 1

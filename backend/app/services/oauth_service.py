@@ -1,12 +1,11 @@
 """OAuth 2.0 authorization flow service."""
 
-import os
-import secrets
 import uuid
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import httpx
-import redis.asyncio as redis
+from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,7 +26,6 @@ class OAuthService:
             session: Database session
         """
         self.session = session
-        self.redis_client = redis.from_url(settings.redis_url, decode_responses=True)
         self.credential_service = CredentialService(session)
 
     async def get_authorization_url(
@@ -64,15 +62,14 @@ class OAuthService:
                 f"OAuth client ID not configured. Set {oauth_config.client_id_env} environment variable"
             )
 
-        # Generate cryptographically random state token
-        state = secrets.token_urlsafe(32)
-
-        # Store state → integration_id mapping in Redis with 10 minute expiry
-        await self.redis_client.setex(
-            f"oauth_state:{state}",
-            600,  # 10 minutes
-            str(integration_id),
-        )
+        # Generate stateless JWT state token (no Redis needed)
+        # The state contains the integration_id and expiry, signed with our secret key
+        state_payload = {
+            "integration_id": str(integration_id),
+            "platform_id": platform_id,
+            "exp": datetime.now(timezone.utc) + timedelta(seconds=settings.oauth_state_expiry_seconds),
+        }
+        state = jwt.encode(state_payload, settings.secret_key, algorithm=settings.algorithm)
 
         # Build redirect URI
         redirect_uri = oauth_config.get_redirect_uri(base_url)
@@ -112,15 +109,23 @@ class OAuthService:
         Raises:
             ValueError: If state invalid, platform not found, or token exchange fails
         """
-        # Validate state and get integration_id
-        integration_id_str = await self.redis_client.get(f"oauth_state:{state}")
-        if not integration_id_str:
-            raise ValueError("Invalid or expired OAuth state parameter")
+        # Validate state by decoding the JWT (stateless - no Redis needed)
+        try:
+            state_payload = jwt.decode(
+                state,
+                settings.secret_key,
+                algorithms=[settings.algorithm],
+            )
+            integration_id = uuid.UUID(state_payload["integration_id"])
 
-        integration_id = uuid.UUID(integration_id_str)
+            # Verify platform_id matches
+            if state_payload.get("platform_id") != platform_id:
+                raise ValueError("Platform mismatch in OAuth state")
 
-        # Delete state from Redis (one-time use)
-        await self.redis_client.delete(f"oauth_state:{state}")
+        except JWTError as e:
+            raise ValueError(f"Invalid or expired OAuth state parameter: {e}")
+
+        # No need to delete state - JWT is stateless and self-expiring
 
         # Get platform config
         platform = get_platform(platform_id)
@@ -280,7 +285,3 @@ class OAuthService:
         )
 
         return new_access_token
-
-    async def close(self):
-        """Close Redis connection."""
-        await self.redis_client.aclose()

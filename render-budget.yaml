@@ -1,0 +1,108 @@
+# Render Blueprint - BUDGET OPTION ($7-14/month)
+# Uses external free services for database
+# Only pays for 1-2 web services that don't sleep
+# No Redis needed - uses stateless JWT for OAuth
+
+# NOTE: No databases defined here - using external free services
+# You'll create these separately:
+# - Neon PostgreSQL (free tier): https://neon.tech
+
+services:
+  # Backend API Service - PAID (always on)
+  - type: web
+    name: melton-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    region: oregon
+    plan: starter  # $7/month - always on, no sleep
+    branch: main
+    healthCheckPath: /health
+    envVars:
+      # Database - using FREE Neon PostgreSQL
+      # Create at https://neon.tech (10GB free, always on)
+      # Format: postgresql+asyncpg://user:pass@endpoint/dbname
+      - key: DATABASE_URL
+        sync: false  # Add manually from Neon dashboard
+
+      - key: DATABASE_URL_SYNC
+        sync: false  # Add manually from Neon dashboard (without +asyncpg)
+
+      # Security
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 15
+      - key: ENCRYPTION_KEY
+        generateValue: true
+
+      # Environment
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: false
+
+      # URLs
+      - key: FRONTEND_URL
+        value: https://meltonagents.com
+      - key: BACKEND_URL
+        value: https://api.meltonagents.com
+      - key: CORS_ORIGINS
+        value: https://meltonagents.com,https://www.meltonagents.com
+
+      # API
+      - key: API_V1_PREFIX
+        value: /api/v1
+
+      # OAuth
+      - key: MERCADOLIBRE_CLIENT_ID
+        sync: false
+      - key: MERCADOLIBRE_CLIENT_SECRET
+        sync: false
+
+      # LLM API Keys
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+
+    # Persistent disk for uploads - $1/GB
+    disk:
+      name: uploads
+      mountPath: /app/uploads
+      sizeGB: 1  # $1/month
+
+  # Frontend Next.js Service - FREE or PAID
+  # OPTION 1: Use free tier (sleeps after 15 min)
+  # OPTION 2: Use starter plan ($7/month) for always-on
+  - type: web
+    name: melton-frontend
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    region: oregon
+    plan: free  # Change to 'starter' for always-on ($7/month more)
+    branch: main
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://api.meltonagents.com
+      - key: NODE_ENV
+        value: production
+
+# COST BREAKDOWN:
+# - Neon PostgreSQL: FREE (10GB, always on)
+# - Backend Web Service: $7/month (starter plan)
+# - Persistent Disk: $1/month (1GB)
+# - Frontend Web Service: FREE (sleeps) or $7/month (always on)
+#
+# TOTAL: $8/month (frontend sleeps) or $15/month (always on)
+#
+# BENEFITS:
+# - Backend always responds quickly
+# - Frontend can sleep (static pages load fast anyway)
+# - Database always on (free)
+# - No Redis needed (stateless JWT for OAuth)

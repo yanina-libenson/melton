@@ -86,8 +86,8 @@ class MercadoLibreSearchTool(BasePlatformTool):
         if sort := input_data.get("sort"):
             params["sort"] = sort
 
-        # Make API request (public endpoint - no authentication required)
-        response = await self._make_public_request(
+        # Make API request (authentication now required by MercadoLibre)
+        response = await self._make_authenticated_request(
             method="GET",
             endpoint=f"{ml_config.SITES_ENDPOINT}/{site_id}/search",
             params=params,
@@ -161,40 +161,6 @@ class MercadoLibreSearchTool(BasePlatformTool):
             "offset": response.get("paging", {}).get("offset", params["offset"]),
             "stats": stats,
         }
-
-    async def _make_public_request(
-        self,
-        method: str,
-        endpoint: str,
-        params: dict[str, Any] | None = None,
-        json: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """
-        Make a public API request (no authentication required).
-
-        Args:
-            method: HTTP method
-            endpoint: API endpoint
-            params: Query parameters
-            json: JSON payload
-
-        Returns:
-            API response
-        """
-        import httpx
-
-        url = f"{self.integration.api_base_url}/{endpoint}"
-
-        async with httpx.AsyncClient() as client:
-            response = await client.request(
-                method=method,
-                url=url,
-                params=params,
-                json=json,
-                timeout=30.0,
-            )
-            response.raise_for_status()
-            return response.json()
 
     def get_schema(self) -> dict[str, Any]:
         """

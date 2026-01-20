@@ -1,0 +1,105 @@
+# Render Blueprint - FREE TIER ($0/month)
+# Services will sleep after 15 minutes of inactivity
+# PostgreSQL has limited resources (1GB storage, 256MB RAM)
+# Good for testing, demo, or low-traffic hobby projects
+# No Redis needed - uses stateless JWT for OAuth
+
+databases:
+  - name: melton-postgres-free
+    databaseName: melton
+    user: melton
+    plan: free  # Free tier - will expire after 90 days, limited resources
+    region: oregon
+    ipAllowList: []
+
+services:
+  # Backend API Service - FREE
+  - type: web
+    name: melton-backend-free
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    region: oregon
+    plan: free  # Free tier - sleeps after 15 min inactivity
+    branch: main
+    healthCheckPath: /health
+    envVars:
+      # Database - using free PostgreSQL
+      - key: DATABASE_URL
+        fromDatabase:
+          name: melton-postgres-free
+          property: connectionString
+      - key: DATABASE_URL_SYNC
+        fromDatabase:
+          name: melton-postgres-free
+          property: connectionString
+
+      # Security
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 15
+      - key: ENCRYPTION_KEY
+        generateValue: true
+
+      # Environment
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: false
+
+      # URLs
+      - key: FRONTEND_URL
+        value: https://meltonagents.com
+      - key: BACKEND_URL
+        value: https://api.meltonagents.com
+      - key: CORS_ORIGINS
+        value: https://meltonagents.com,https://www.meltonagents.com,https://api.meltonagents.com
+
+      # API
+      - key: API_V1_PREFIX
+        value: /api/v1
+
+      # OAuth - ADD YOUR CREDENTIALS IN RENDER DASHBOARD
+      - key: MERCADOLIBRE_CLIENT_ID
+        sync: false
+      - key: MERCADOLIBRE_CLIENT_SECRET
+        sync: false
+
+      # LLM API Keys
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+
+    # NOTE: Free tier doesn't support persistent disks
+    # Uploads will be lost when service restarts
+    # Consider using Cloudflare R2 or AWS S3 for free storage
+
+  # Frontend Next.js Service - FREE
+  - type: web
+    name: melton-frontend-free
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    region: oregon
+    plan: free  # Free tier - sleeps after 15 min inactivity
+    branch: main
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://api.meltonagents.com
+      - key: NODE_ENV
+        value: production
+
+# LIMITATIONS OF FREE TIER:
+# - Services sleep after 15 minutes of inactivity (50-second cold start)
+# - PostgreSQL free tier expires after 90 days
+# - No persistent disk for uploads
+# - Limited resources (512MB RAM)
+# - Shared infrastructure (slower)
+#
+# COST: $0/month

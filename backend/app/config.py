@@ -17,9 +17,6 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://melton:melton_dev_password@localhost:5432/melton"
     database_url_sync: str = "postgresql://melton:melton_dev_password@localhost:5432/melton"
 
-    # Redis
-    redis_url: str = "redis://localhost:6379/0"
-
     # JWT
     secret_key: str = "development-secret-key-change-in-production"
     algorithm: str = "HS256"

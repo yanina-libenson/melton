@@ -61,7 +61,6 @@ async def health() -> dict[str, str]:
     return {
         "status": "healthy",
         "database": "connected",
-        "redis": "connected",
     }
 
 

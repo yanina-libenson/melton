@@ -316,12 +316,12 @@ class AgentExecutionService:
                         logger.error(f"NOT sending message_complete - no assistant content in iteration {iteration}")
 
                     # Check if we should stop due to limits
-                    # Check if any single tool has failed 6 times in a row
+                    # Check if any single tool has failed 2 times in a row
                     max_tool_failures = max(tool_failure_counts.values()) if tool_failure_counts else 0
-                    if max_tool_failures >= 6:
-                        failing_tool = [k for k, v in tool_failure_counts.items() if v >= 6][0]
-                        logger.error(f"Stopping: tool {failing_tool} failed 6 times in a row")
-                        final_response_content = f"The {failing_tool} operation has failed 6 times in a row. Let me know if you'd like me to try a different approach or if you can provide additional information."
+                    if max_tool_failures >= 2:
+                        failing_tool = [k for k, v in tool_failure_counts.items() if v >= 2][0]
+                        logger.error(f"Stopping: tool {failing_tool} failed 2 times in a row")
+                        final_response_content = f"The {failing_tool} operation has failed 2 times in a row. Let me know if you'd like me to try a different approach or if you can provide additional information."
                         yield ExecutionEvent("content_delta", delta=final_response_content)
                         break
 

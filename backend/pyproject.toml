@@ -19,7 +19,6 @@ pydantic-settings = "^2.6.0"
 python-jose = {extras = ["cryptography"], version = "^3.3.0"}  # JWT tokens
 passlib = {extras = ["bcrypt"], version = "^1.7.4"}  # Password hashing
 httpx = "^0.28.0"  # Async HTTP client
-redis = "^5.2.0"
 celery = "^5.4.0"
 anthropic = "^0.75.0"  # Claude
 openai = "^1.57.1"  # GPT
@@ -86,7 +85,6 @@ no_implicit_optional = true
 [[tool.mypy.overrides]]
 module = [
     "celery.*",
-    "redis.*",
     "langfuse.*",
 ]
 ignore_missing_imports = true
