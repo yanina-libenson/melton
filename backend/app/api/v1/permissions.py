@@ -114,6 +114,7 @@ async def get_my_permission(
     agent_id: str,
     current_user: CurrentUser,
     permission_service: PermissionServiceDep,
+    session: DatabaseSession,
 ) -> dict:
     """
     Get the current user's permission level for an agent.
@@ -123,10 +124,21 @@ async def get_my_permission(
         - permission_type: "admin" | "use" | null
     """
     try:
+        from sqlalchemy import select
+        from app.models.agent import Agent
+
         agent_uuid = uuid.UUID(agent_id)
         current_user_id = current_user["user_id"]
 
-        # Check if user is admin
+        # First check if user is the owner of the agent (always admin)
+        result = await session.execute(
+            select(Agent).where(Agent.id == agent_uuid)
+        )
+        agent = result.scalar_one_or_none()
+        if agent and agent.user_id == current_user_id:
+            return {"has_permission": True, "permission_type": "admin"}
+
+        # Check if user is admin via permission table
         is_admin = await permission_service.is_admin(agent_uuid, current_user_id)
         if is_admin:
             return {"has_permission": True, "permission_type": "admin"}

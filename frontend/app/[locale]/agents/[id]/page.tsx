@@ -75,7 +75,9 @@ export default function AgentPage({ params }: { params: Promise<{ id: string; lo
     () => apiClient.getUserPermission(resolvedParams.id)
   )
 
-  const isAdmin = userPermission?.permission_type === 'admin'
+  // For new agents, the creator should be treated as admin
+  // For existing agents, check the permission API response
+  const isAdmin = isNewAgent || userPermission?.permission_type === 'admin'
   const hasUsePermission = userPermission?.permission_type === 'use'
 
   // Fetch available LLM models
