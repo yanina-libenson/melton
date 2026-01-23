@@ -55,8 +55,6 @@ async def initiate_oauth(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OAuth initiation failed: {str(e)}")
-    finally:
-        await oauth_service.close()
 
 
 @router.post("/oauth/exchange/{platform_id}")
@@ -97,8 +95,6 @@ async def exchange_oauth_code(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Token exchange failed: {str(e)}")
-    finally:
-        await oauth_service.close()
 
 
 @router.post("/oauth/test-users/mercadolibre")
