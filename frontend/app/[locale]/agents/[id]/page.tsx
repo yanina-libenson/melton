@@ -27,6 +27,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AgentPermissions } from '@/components/agent-permissions'
 import { AgentShareLink } from '@/components/agent-share-link'
+import { ToolStatusIndicator } from '@/components/tool-status-indicator'
 import { useAuth } from '@/lib/contexts/auth-context'
 
 export default function AgentPage({ params }: { params: Promise<{ id: string; locale: string }> }) {
@@ -851,21 +852,33 @@ export default function AgentPage({ params }: { params: Promise<{ id: string; lo
                   </div>
                 )}
 
-                {playground.isStreaming && !playground.currentResponse && (
-                  <div className="flex justify-start">
-                    <div className="bg-card border-border shadow-soft-xs rounded-xl border px-5 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <div className="bg-muted-foreground/40 h-1.5 w-1.5 animate-bounce rounded-full" />
-                        <div
-                          className="bg-muted-foreground/40 h-1.5 w-1.5 animate-bounce rounded-full"
-                          style={{ animationDelay: '0.1s' }}
-                        />
-                        <div
-                          className="bg-muted-foreground/40 h-1.5 w-1.5 animate-bounce rounded-full"
-                          style={{ animationDelay: '0.2s' }}
-                        />
+                {playground.isStreaming &&
+                  !playground.currentResponse &&
+                  !playground.activeToolCall && (
+                    <div className="flex justify-start">
+                      <div className="bg-card border-border shadow-soft-xs rounded-xl border px-5 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <div className="bg-muted-foreground/40 h-1.5 w-1.5 animate-bounce rounded-full" />
+                          <div
+                            className="bg-muted-foreground/40 h-1.5 w-1.5 animate-bounce rounded-full"
+                            style={{ animationDelay: '0.1s' }}
+                          />
+                          <div
+                            className="bg-muted-foreground/40 h-1.5 w-1.5 animate-bounce rounded-full"
+                            style={{ animationDelay: '0.2s' }}
+                          />
+                        </div>
                       </div>
                     </div>
+                  )}
+
+                {/* Tool execution status indicator */}
+                {playground.activeToolCall && (
+                  <div className="flex justify-start">
+                    <ToolStatusIndicator
+                      toolName={playground.activeToolCall.toolName}
+                      toolDescription={playground.activeToolCall.toolDescription}
+                    />
                   </div>
                 )}
 

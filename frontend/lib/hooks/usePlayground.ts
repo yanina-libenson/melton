@@ -14,6 +14,12 @@ interface PlaygroundEvent {
   [key: string]: unknown
 }
 
+interface ActiveToolCall {
+  toolName: string
+  toolDescription: string | null
+  toolInput: Record<string, unknown>
+}
+
 interface UsePlaygroundOptions {
   agentId: string
   enabled?: boolean
@@ -31,6 +37,7 @@ export function usePlayground({
   const [isStreaming, setIsStreaming] = useState(false)
   const [currentResponse, setCurrentResponse] = useState('')
   const [conversationId, setConversationId] = useState<string | null>(null)
+  const [activeToolCall, setActiveToolCall] = useState<ActiveToolCall | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const currentResponseRef = useRef<string>('')
 
@@ -72,11 +79,21 @@ export function usePlayground({
               break
 
             case 'tool_use_start':
-              console.log('Tool call started:', data.tool_name)
+              console.log('🔧 Tool call started:', data.tool_name, data)
+              setIsStreaming(true)
+              setActiveToolCall({
+                toolName: data.tool_name as string,
+                toolDescription: (data.tool_description as string) || null,
+                toolInput: (data.tool_input as Record<string, unknown>) || {},
+              })
               break
 
             case 'tool_use_complete':
-              console.log('Tool call completed:', data.tool_name, data.result)
+              console.log('✅ Tool call completed:', data.tool_name, data.result)
+              // Keep the indicator visible for at least 1 second so user can read it
+              setTimeout(() => {
+                setActiveToolCall(null)
+              }, 1000)
               break
 
             case 'message_complete':
@@ -138,6 +155,7 @@ export function usePlayground({
     setIsConnected(false)
     setIsStreaming(false)
     setConversationId(null)
+    setActiveToolCall(null)
     currentResponseRef.current = ''
     setCurrentResponse('')
   }, [])
@@ -207,6 +225,7 @@ export function usePlayground({
     isConnected,
     isStreaming,
     currentResponse,
+    activeToolCall,
     sendMessage,
     connect,
     disconnect,

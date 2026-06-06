@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.llm.factory import LLMProviderFactory
 from app.models.agent import Agent
 from app.services.conversation_service import ConversationService
+from app.services.event_bus import event_bus
 from app.services.llm_model_service import LLMModelService
 from app.tools.registry import ToolRegistry
 from app.utils.observability import observability_service, trace_execution
@@ -85,6 +86,16 @@ class AgentExecutionService:
             )
 
             yield ExecutionEvent("conversation_started", conversation_id=str(conversation.id))
+
+            # Publish conversation_started event to audit stream
+            await event_bus.publish(
+                event_bus.create_event(
+                    event_type="conversation_started",
+                    conversation_id=str(conversation.id),
+                    agent_id=str(agent.id),
+                    agent_name=agent.name,
+                )
+            )
 
             # 4. Save user message
             await self.conversation_service.save_message(
@@ -230,10 +241,31 @@ class AgentExecutionService:
                             yield ExecutionEvent("content_delta", delta=event.delta)
 
                         elif event.type == "tool_use_start":
+                            # Look up tool description from tool schemas
+                            tool_description = None
+                            for schema in tool_schemas:
+                                if schema.get("name") == event.tool_name:
+                                    tool_description = schema.get("description")
+                                    break
+
                             yield ExecutionEvent(
                                 "tool_use_start",
                                 tool_name=event.tool_name,
                                 tool_input=event.tool_input,
+                                tool_description=tool_description,
+                            )
+
+                            # Publish to audit stream
+                            await event_bus.publish(
+                                event_bus.create_event(
+                                    event_type="tool_use_start",
+                                    conversation_id=str(conversation.id),
+                                    agent_id=str(agent.id),
+                                    agent_name=agent.name,
+                                    tool_name=event.tool_name,
+                                    tool_description=tool_description,
+                                    tool_input=event.tool_input or {},
+                                )
                             )
 
                             # Execute tool
@@ -293,6 +325,19 @@ class AgentExecutionService:
                                 "tool_use_complete",
                                 tool_name=event.tool_name,
                                 result=tool_result,
+                            )
+
+                            # Publish to audit stream
+                            await event_bus.publish(
+                                event_bus.create_event(
+                                    event_type="tool_use_complete",
+                                    conversation_id=str(conversation.id),
+                                    agent_id=str(agent.id),
+                                    agent_name=agent.name,
+                                    tool_name=event.tool_name,
+                                    tool_success=tool_success,
+                                    duration_ms=duration_ms,
+                                )
                             )
 
                     # If no tools were called, we have the final response
@@ -465,6 +510,17 @@ class AgentExecutionService:
                 )
 
                 yield ExecutionEvent("message_complete", message_id=str(uuid.uuid4()))
+
+                # Publish to audit stream
+                await event_bus.publish(
+                    event_bus.create_event(
+                        event_type="message_complete",
+                        conversation_id=str(conversation.id),
+                        agent_id=str(agent.id),
+                        agent_name=agent.name,
+                        tool_calls_count=len(all_tool_calls),
+                    )
+                )
 
             finally:
                 # Clean up provider
