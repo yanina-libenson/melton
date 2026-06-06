@@ -39,7 +39,6 @@ class AgentExecutionService:
         self.session = session
         self.conversation_service = ConversationService(session)
         self.llm_model_service = LLMModelService(session)
-        self.tool_registry = ToolRegistry()
 
     @trace_execution("agent_conversation")
     async def execute_conversation(
@@ -74,8 +73,11 @@ class AgentExecutionService:
 
             yield ExecutionEvent("agent_loaded", agent_id=str(agent.id))
 
-            # 2. Register agent tools
-            await self._register_agent_tools(agent, user_api_keys)
+            # 2. Register agent tools into a registry scoped to THIS execution only.
+            # Never a shared/global registry: tool instances carry per-user
+            # credentials and must not leak across concurrent conversations.
+            tool_registry = ToolRegistry()
+            await self._register_agent_tools(agent, tool_registry, user_api_keys)
 
             # 3. Get or create conversation (STATEFUL)
             conversation = await self.conversation_service.get_or_create_conversation(
@@ -270,7 +272,7 @@ class AgentExecutionService:
 
                             # Execute tool
                             start_time = time.time()
-                            tool_result = await self._execute_tool(event.tool_name, event.tool_input or {})
+                            tool_result = await self._execute_tool(tool_registry, event.tool_name, event.tool_input or {})
                             duration_ms = int((time.time() - start_time) * 1000)
 
                             # Track consecutive failures per tool
@@ -580,10 +582,15 @@ class AgentExecutionService:
 
         return tool_schemas
 
-    async def _register_agent_tools(self, agent: Agent, user_api_keys: dict[str, str] | None = None):
+    async def _register_agent_tools(
+        self,
+        agent: Agent,
+        tool_registry: ToolRegistry,
+        user_api_keys: dict[str, str] | None = None,
+    ):
         """
-        Register all enabled tools for the agent in the tool registry.
-        Creates tool instances from database models and registers them.
+        Register all enabled tools for the agent into the given (per-execution)
+        tool registry. Creates tool instances from database models.
         """
         import logging
         logger = logging.getLogger(__name__)
@@ -615,12 +622,14 @@ class AgentExecutionService:
                         organization_id=agent.organization_id,
                     )
 
-                    # Register in registry
-                    self.tool_registry.register(tool_name, tool_instance)
+                    # Register in the per-execution registry
+                    tool_registry.register(tool_name, tool_instance)
 
-    async def _execute_tool(self, tool_name: str, tool_input: dict[str, Any]) -> dict[str, Any]:
-        """Execute a tool by name."""
-        tool = self.tool_registry.get(tool_name)
+    async def _execute_tool(
+        self, tool_registry: ToolRegistry, tool_name: str, tool_input: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Execute a tool by name from the per-execution registry."""
+        tool = tool_registry.get(tool_name)
 
         if not tool:
             return {"success": False, "error": f"Tool {tool_name} not found"}
