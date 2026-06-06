@@ -8,6 +8,7 @@ configuration wherever the full app isn't loaded (notably the test DB fixture).
 
 from app.models.agent import Agent
 from app.models.agent_permission import AgentPermission
+from app.models.confirmation_request import ConfirmationRequest
 from app.models.conversation import Conversation
 from app.models.deployment import Deployment
 from app.models.encrypted_credential import EncryptedCredential
@@ -22,6 +23,7 @@ from app.models.user_api_key import UserApiKey
 __all__ = [
     "Agent",
     "AgentPermission",
+    "ConfirmationRequest",
     "Integration",
     "Tool",
     "EncryptedCredential",
