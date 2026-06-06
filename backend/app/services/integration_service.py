@@ -35,20 +35,51 @@ class IntegrationService:
         if not agent:
             raise ValueError(f"Agent with ID {agent_id} not found")
 
+        # Pull any platform credential fields OUT of config so they're stored
+        # encrypted (EncryptedCredential), never persisted as plaintext config.
+        config = dict(config or {})
+        cred_data = self._extract_platform_credentials(platform_id, config)
+
         integration = Integration(
             agent_id=agent_id,
             type=type,
             platform_id=platform_id,
             name=name,
             description=description,
-            config=config or {},
+            config=config,
         )
 
         self.session.add(integration)
         await self.session.flush()
+
+        if cred_data:
+            from app.services.credential_service import CredentialService
+
+            await CredentialService(self.session).store_credentials(integration.id, cred_data)
+
         await self.session.refresh(integration, ["tools"])
 
         return integration
+
+    @staticmethod
+    def _extract_platform_credentials(platform_id: str | None, config: dict) -> dict | None:
+        """Pop a platform's declared credential fields out of `config` and return
+        them, so they can be stored encrypted instead of in plaintext config.
+
+        Mutates `config` in place. Returns {field: value} or None if the platform
+        declares no credential fields or none are present.
+        """
+        if not platform_id:
+            return None
+        from app.tools.platforms.platform_config import PLATFORMS
+
+        platform = PLATFORMS.get(platform_id)
+        fields = getattr(platform, "credential_fields", None) if platform else None
+        if not fields:
+            return None
+
+        data = {f: config.pop(f) for f in fields if f in config}
+        return data or None
 
     async def get_integration(self, integration_id: uuid.UUID) -> Integration | None:
         """Get an integration by ID."""
