@@ -30,6 +30,38 @@ class ExecutionEvent:
         return {"type": self.type, **self.data}
 
 
+_CONFIRM_LABELS = {
+    "accion": "Acción",
+    "monto": "Monto",
+    "destino": "Destino",
+    "cuit": "CUIT",
+    "concepto": "Concepto",
+    "description": "Detalle",
+    "detalle": "Detalle",
+}
+
+
+def format_confirmation_prompt(summary: dict | None) -> str:
+    """Render a readable 'here's what I'll do, confirm?' message from a tool's
+    confirmation_summary, so the user sees the operation BEFORE approving."""
+    if not isinstance(summary, dict) or not summary:
+        return "Necesito tu confirmación para continuar. ¿Confirmás? (sí/no)"
+
+    irreversible = bool(summary.get("irreversible"))
+    lines = []
+    for key, value in summary.items():
+        if key == "irreversible" or value is None or value == "":
+            continue
+        label = _CONFIRM_LABELS.get(key, key.replace("_", " ").capitalize())
+        if key == "monto":
+            value = f"${value} ARS"
+        lines.append(f"• {label}: {value}")
+
+    body = "\n".join(lines)
+    warning = "\n\n⚠️ Esta acción es irreversible." if irreversible else ""
+    return f"📋 Esto es lo que voy a hacer:\n{body}{warning}\n\n¿Confirmás? (sí/no)"
+
+
 class AgentExecutionService:
     """
     Orchestrates agent conversations with streaming.
@@ -719,16 +751,22 @@ class AgentExecutionService:
         )
         reference_id = uuid.uuid4().hex
 
-        lead = (assistant_content or "").strip()
-        if not lead:
-            lead = "Necesito tu confirmación para continuar. ¿Confirmás? (sí/no)"
-            # Nothing was streamed yet, so surface the prompt text.
-            yield ExecutionEvent("content_delta", delta=lead)
+        # Always present the operation summary BEFORE asking to confirm. Any
+        # lead text the model already streamed stays; we append the structured
+        # summary + the confirm question.
+        summary_prompt = format_confirmation_prompt(summary)
+        lead_text = (assistant_content or "").strip()
+        delta = (lead_text + "\n\n" + summary_prompt) if lead_text else summary_prompt
+        if lead_text:
+            # lead_text already streamed during the turn; only stream the summary.
+            yield ExecutionEvent("content_delta", delta="\n\n" + summary_prompt)
+        else:
+            yield ExecutionEvent("content_delta", delta=summary_prompt)
 
         agent_msg = await self.conversation_service.save_message(
             conversation_id=conversation.id,
             role="agent",
-            content=lead,
+            content=delta,
             tool_calls=[{
                 "tool_name": tool_use["name"],
                 "input": tool_use["input"],
@@ -772,7 +810,8 @@ class AgentExecutionService:
         decision = classify_confirmation(user_message)
 
         if decision == "ambiguous":
-            msg = "¿Confirmás la operación? Respondé *sí* o *no*."
+            # Re-show the summary (the user may be asking to see it) + ask again.
+            msg = format_confirmation_prompt(pending.summary)
             yield ExecutionEvent("content_delta", delta=msg)
             saved = await self.conversation_service.save_message(conversation.id, "agent", msg)
             yield ExecutionEvent("message_complete", message_id=str(saved.id))
