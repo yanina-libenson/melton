@@ -120,6 +120,31 @@ class ConversationService:
 
         return message
 
+    async def save_execution_traces(
+        self, message_id: uuid.UUID, traces: list[dict]
+    ) -> None:
+        """Persist execution traces (durable observability) for a message.
+
+        Each trace is {step_type, step_data, duration_ms?}. This is the durable
+        record the conversation /trace endpoint reads; it complements the live
+        (ephemeral, in-memory) audit event_bus stream.
+        """
+        if not traces:
+            return
+
+        from app.models.execution_trace import ExecutionTrace
+
+        for trace in traces:
+            self.session.add(
+                ExecutionTrace(
+                    message_id=message_id,
+                    step_type=trace["step_type"],
+                    step_data=trace["step_data"],
+                    duration_ms=trace.get("duration_ms"),
+                )
+            )
+        await self.session.flush()
+
     async def list_user_conversations(
         self, user_id: uuid.UUID, include_archived: bool = False, limit: int = 50
     ) -> list[Conversation]:

@@ -221,6 +221,7 @@ class AgentExecutionService:
                 all_tool_calls = []
                 final_response_content = ""
                 created_entities = {}  # Track entities created during execution (IDs, references, etc.)
+                execution_traces = []  # Durable ExecutionTrace rows, persisted after the final message
 
                 while iteration < max_iterations:
                     iteration += 1
@@ -300,7 +301,7 @@ class AgentExecutionService:
                                         created_entities[key] = result_data[key]
                                         logger.info(f"Tracked created entity: {key}={result_data[key]}")
 
-                            # Trace tool execution
+                            # Trace tool execution (live, ephemeral -> LangFuse)
                             observability_service.trace_tool_execution(
                                 tool_name=event.tool_name,
                                 input_data=event.tool_input or {},
@@ -308,6 +309,19 @@ class AgentExecutionService:
                                 duration_ms=duration_ms,
                                 success=tool_success,
                             )
+
+                            # Accumulate a durable trace row (persisted to ExecutionTrace
+                            # after the final message is saved).
+                            execution_traces.append({
+                                "step_type": "tool_call",
+                                "step_data": {
+                                    "tool_name": event.tool_name,
+                                    "input": event.tool_input or {},
+                                    "output": tool_result,
+                                    "success": tool_success,
+                                },
+                                "duration_ms": duration_ms,
+                            })
 
                             # Track tool use with ID
                             tool_uses.append({
@@ -494,21 +508,36 @@ class AgentExecutionService:
 
                     # Continue loop to get next LLM response
 
-                # 9. Save agent response
-                await self.conversation_service.save_message(
+                # 9. Save agent response (returns the persisted Message with a real id)
+                agent_message = await self.conversation_service.save_message(
                     conversation_id=conversation.id,
                     role="agent",
                     content=final_response_content,
                     tool_calls=all_tool_calls,
                 )
 
-                # Trace LLM call
+                # Trace LLM call (live, ephemeral -> LangFuse)
                 observability_service.trace_llm_call(
                     model=agent.model_config.get("model"),
                     provider=provider_type,
                     input_data={"messages": history, "system": agent.instructions},
                     output_data=final_response_content,
                     metadata={"tool_calls": len(all_tool_calls), "iterations": iteration},
+                )
+
+                # Persist durable execution traces linked to the saved message.
+                execution_traces.append({
+                    "step_type": "llm_call",
+                    "step_data": {
+                        "model": agent.model_config.get("model"),
+                        "provider": provider_type,
+                        "iterations": iteration,
+                        "tool_calls": len(all_tool_calls),
+                    },
+                    "duration_ms": None,
+                })
+                await self.conversation_service.save_execution_traces(
+                    agent_message.id, execution_traces
                 )
 
                 yield ExecutionEvent("message_complete", message_id=str(uuid.uuid4()))
