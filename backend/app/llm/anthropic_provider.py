@@ -84,30 +84,48 @@ class AnthropicProvider(BaseLLMProvider):
             messages=messages,
             tools=anthropic_tools,
         ) as stream:
-            async for event in stream:
-                if event.type == "content_block_delta":
-                    if hasattr(event.delta, "text"):
-                        yield StreamEvent(event_type="content_delta", delta=event.delta.text)
+            # Anthropic streams a tool_use block as: content_block_start (input
+            # is EMPTY here) -> N input_json_delta chunks -> content_block_stop.
+            # We must accumulate the partial JSON and emit tool_use_start only at
+            # stop, with the COMPLETE parsed input. Reading content_block.input at
+            # start always yields {} (the latent bug that broke tool arguments).
+            current_tool: dict | None = None
+            tool_json_buf = ""
 
-                elif (
+            async for event in stream:
+                if (
                     event.type == "content_block_start"
-                    and hasattr(event.content_block, "type")
-                    and event.content_block.type == "tool_use"
+                    and getattr(event.content_block, "type", None) == "tool_use"
                 ):
-                    # DEBUG: Log what Claude is actually sending
-                    logger.error(f"========== CLAUDE CALLED TOOL ==========")
-                    logger.error(f"Tool name: {event.content_block.name}")
-                    logger.error(f"Tool input: {event.content_block.input}")
-                    logger.error(f"Tool input type: {type(event.content_block.input)}")
-                    logger.error(f"Tool ID: {event.content_block.id}")
-                    logger.error(f"=======================================")
+                    current_tool = {
+                        "id": event.content_block.id,
+                        "name": event.content_block.name,
+                    }
+                    tool_json_buf = ""
+
+                elif event.type == "content_block_delta":
+                    delta = event.delta
+                    if hasattr(delta, "partial_json"):
+                        tool_json_buf += delta.partial_json or ""
+                    elif hasattr(delta, "text"):
+                        yield StreamEvent(event_type="content_delta", delta=delta.text)
+
+                elif event.type == "content_block_stop" and current_tool is not None:
+                    import json
+
+                    try:
+                        tool_input = json.loads(tool_json_buf) if tool_json_buf.strip() else {}
+                    except json.JSONDecodeError:
+                        tool_input = {}
 
                     yield StreamEvent(
                         event_type="tool_use_start",
-                        tool_name=event.content_block.name,
-                        tool_input=event.content_block.input,
-                        tool_use_id=event.content_block.id,
+                        tool_name=current_tool["name"],
+                        tool_input=tool_input,
+                        tool_use_id=current_tool["id"],
                     )
+                    current_tool = None
+                    tool_json_buf = ""
 
     async def generate_without_tools(
         self,
