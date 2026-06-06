@@ -7,9 +7,14 @@ from collections.abc import AsyncGenerator
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import StaticPool
 
 from app.database import Base
+
+# Import the models package so ALL mappers are registered before create_all.
+# (A string relationship like Agent -> "AgentPermission" only resolves if the
+# target class has been imported.)
+import app.models  # noqa: F401
 from app.models.agent import Agent
 
 
@@ -24,11 +29,15 @@ def event_loop():
 @pytest.fixture(scope="function")
 async def test_session() -> AsyncGenerator[AsyncSession, None]:
     """Create test database session."""
-    # Use in-memory SQLite for testing
+    # Use in-memory SQLite for testing. StaticPool keeps a SINGLE shared
+    # connection so the in-memory DB (and its tables) persist across the
+    # create_all connection and the session connection. With NullPool each
+    # connection would get its own empty :memory: DB -> "no such table".
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         echo=False,
-        poolclass=NullPool,
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
     )
 
     # Create tables
