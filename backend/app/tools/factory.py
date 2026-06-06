@@ -166,6 +166,16 @@ class ToolFactory:
             else:
                 raise ValueError(f"Unknown Mercado Libre tool: {tool_name}")
 
+        # TelePagos platform (money transfers)
+        elif platform_id == "telepagos":
+            from app.tools.platforms.telepagos import TelePagosTransferTool
+
+            return TelePagosTransferTool(
+                tool_id=str(tool_model.id),
+                tool_config=tool_model.config,
+                integration=tool_model.integration,
+            )
+
         # Add more platforms here as they are implemented
         else:
             raise ValueError(f"Platform {platform_id} not supported")
