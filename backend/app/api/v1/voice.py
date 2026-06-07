@@ -39,13 +39,19 @@ def _header_safe(text: str) -> str:
 
 
 def _voice_response(
-    audio: bytes, status_: str, needs_confirmation: bool, message: str
+    audio: bytes,
+    status_: str,
+    needs_confirmation: bool,
+    message: str,
+    conversation_id: str | None = None,
 ) -> Response:
     headers = {
         "X-Status": status_,
         "X-Needs-Confirmation": "True" if needs_confirmation else "False",
         "X-Message": _header_safe(message),
     }
+    if conversation_id:
+        headers["X-Conversation-Id"] = conversation_id
     if audio:
         return Response(content=audio, media_type="audio/mpeg", headers=headers)
     # Error path: no audio -> JSON body with the same info.
@@ -65,6 +71,7 @@ async def agent_voice(
     session: DatabaseSession,
     audio: UploadFile,
     session_id: str = Form("default"),
+    conversation_id: str | None = Form(None),
 ) -> Response:
     user_id = current_user["user_id"]
 
@@ -100,19 +107,35 @@ async def agent_voice(
     if not text:
         return _voice_response(b"", "error", False, "No entendí el audio, probá de nuevo.")
 
-    # 2. Resolve/continue the per-session voice conversation (so the gate works
-    #    across utterances).
-    conv = (
-        await session.execute(
-            select(Conversation)
-            .where(
-                Conversation.agent_id == agent_id,
-                Conversation.channel_type == "voice",
-                Conversation.external_user_id == session_id,
+    # 2. Resolve the conversation. If the client passed a conversation_id (the
+    #    UNIFIED case: same thread as the text chat), continue that one. Otherwise
+    #    fall back to a per-session "voice" conversation (e.g. the watch).
+    conv = None
+    if conversation_id:
+        try:
+            cid = uuid.UUID(conversation_id)
+        except ValueError:
+            cid = None
+        if cid is not None:
+            conv = (
+                await session.execute(
+                    select(Conversation).where(
+                        Conversation.id == cid, Conversation.agent_id == agent_id
+                    )
+                )
+            ).scalars().first()
+    if conv is None:
+        conv = (
+            await session.execute(
+                select(Conversation)
+                .where(
+                    Conversation.agent_id == agent_id,
+                    Conversation.channel_type == "voice",
+                    Conversation.external_user_id == session_id,
+                )
+                .order_by(Conversation.created_at.desc())
             )
-            .order_by(Conversation.created_at.desc())
-        )
-    ).scalars().first()
+        ).scalars().first()
     if conv is None:
         conv = Conversation(
             agent_id=agent_id, user_id=user_id, channel_type="voice", external_user_id=session_id
@@ -140,8 +163,10 @@ async def agent_voice(
             error_msg = ev.data.get("error", "error")
     await session.commit()
 
+    conv_id = str(conv.id)
+
     if error_msg and not response_text:
-        return _voice_response(b"", "error", False, error_msg)
+        return _voice_response(b"", "error", False, error_msg, conversation_id=conv_id)
 
     spoken = response_text.strip() or "Listo."
 
@@ -150,11 +175,12 @@ async def agent_voice(
         audio_out = await voice.synthesize(spoken)
     except VoiceServiceError:
         # Couldn't synthesize; still return the text so the client can show it.
-        return _voice_response(b"", "error", needs_confirmation, spoken)
+        return _voice_response(b"", "error", needs_confirmation, spoken, conversation_id=conv_id)
 
     return _voice_response(
         audio_out,
         "needs_confirmation" if needs_confirmation else "success",
         needs_confirmation,
         spoken,
+        conversation_id=conv_id,
     )
