@@ -48,6 +48,7 @@ def _voice_response(
     needs_confirmation: bool,
     message: str,
     conversation_id: str | None = None,
+    transcript: str | None = None,
 ) -> Response:
     headers = {
         "X-Status": status_,
@@ -56,6 +57,8 @@ def _voice_response(
     }
     if conversation_id:
         headers["X-Conversation-Id"] = conversation_id
+    if transcript:
+        headers["X-Transcript"] = _header_safe(transcript)
     if audio:
         return Response(content=audio, media_type="audio/mpeg", headers=headers)
     # Error path: no audio -> JSON body with the same info.
@@ -179,7 +182,9 @@ async def agent_voice(
         audio_out = await voice.synthesize(spoken)
     except VoiceServiceError:
         # Couldn't synthesize; still return the text so the client can show it.
-        return _voice_response(b"", "error", needs_confirmation, spoken, conversation_id=conv_id)
+        return _voice_response(
+            b"", "error", needs_confirmation, spoken, conversation_id=conv_id, transcript=text
+        )
 
     return _voice_response(
         audio_out,
@@ -187,4 +192,5 @@ async def agent_voice(
         needs_confirmation,
         spoken,
         conversation_id=conv_id,
+        transcript=text,
     )
