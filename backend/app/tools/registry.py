@@ -7,19 +7,17 @@ from app.tools.base_tool import BaseTool
 
 class ToolRegistry:
     """
-    Singleton registry for all tools.
-    Manages tool lifecycle and provides access to tool instances.
+    Per-execution registry for an agent's tools.
+
+    A fresh ToolRegistry is created for each conversation execution so that
+    tool instances (and the credentials bound to them) are NEVER shared across
+    concurrent conversations or users in the same process. This used to be a
+    process-wide singleton, which leaked one user's credentialed tools into
+    another user's conversation under concurrency.
     """
 
-    _instance: "ToolRegistry | None" = None
-    _tools: dict[str, BaseTool] = {}
-
-    def __new__(cls) -> "ToolRegistry":
-        """Ensure only one instance exists."""
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._tools = {}
-        return cls._instance
+    def __init__(self) -> None:
+        self._tools: dict[str, BaseTool] = {}
 
     def register(self, tool_name: str, tool: BaseTool) -> None:
         """

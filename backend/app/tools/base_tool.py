@@ -10,11 +10,22 @@ class BaseTool(ABC):
     Keep implementations under 200 lines and focused.
     """
 
+    # Tools that perform irreversible / sensitive actions (e.g. moving money)
+    # set this True. The execution loop then suspends instead of executing,
+    # creating a ConfirmationRequest and waiting for the user to approve.
+    requires_confirmation: bool = False
+
     def __init__(self, tool_id: str, config: dict[str, Any]):
         self.tool_id = tool_id
         self.config = config
         self.name = config.get("name", tool_id)
         self.description = config.get("description", "")
+
+    def confirmation_summary(self, input_data: dict[str, Any]) -> dict[str, Any]:
+        """Human-facing summary shown on the confirmation card before the user
+        approves. Override in tools that require confirmation. Defaults to the
+        raw input."""
+        return input_data
 
     @abstractmethod
     async def execute(self, input_data: dict[str, Any]) -> dict[str, Any]:

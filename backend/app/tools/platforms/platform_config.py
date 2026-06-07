@@ -30,6 +30,9 @@ class PlatformConfig:
     oauth_config: OAuthConfig | None
     base_api_url: str
     rate_limit: dict[str, int]  # {"requests": 1500, "per": "minute"}
+    # Config keys that are credentials (username/password/etc.). When set, these
+    # are stored ENCRYPTED (EncryptedCredential), never in integration.config.
+    credential_fields: list[str] | None = None
 
 
 # Platform Registry - Add new pre-built platforms here
@@ -49,7 +52,17 @@ PLATFORMS: dict[str, PlatformConfig] = {
         ),
         base_api_url="https://api.mercadolibre.com",
         rate_limit={"requests": 1500, "per": "minute"},
-    )
+    ),
+    "telepagos": PlatformConfig(
+        id="telepagos",
+        name="Transferir (TelePagos)",
+        description="Transferencias de dinero en pesos (ARS) a un alias o CVU/CBU. Requiere confirmación.",
+        category="Pagos",
+        oauth_config=None,  # auth is username/password (entered in the panel), not OAuth
+        base_api_url="https://api.telepagos.com.ar",
+        rate_limit={"requests": 60, "per": "minute"},
+        credential_fields=["username", "password", "env"],
+    ),
 }
 
 

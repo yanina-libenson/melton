@@ -1,5 +1,6 @@
 """Credential management service for OAuth and API keys."""
 
+import json
 import uuid
 from datetime import datetime, timedelta
 
@@ -80,6 +81,45 @@ class CredentialService:
         await self.session.commit()
         await self.session.refresh(credential)
         return credential
+
+    async def store_credentials(
+        self, integration_id: uuid.UUID, data: dict
+    ) -> EncryptedCredential:
+        """Store a non-OAuth credential bundle (e.g. {username, password, env})
+        as a single Fernet-encrypted JSON blob under credential_type='credentials'.
+        Upserts so re-saving updates in place."""
+        encrypted = encryption_service.encrypt(json.dumps(data))
+
+        stmt = select(EncryptedCredential).where(
+            EncryptedCredential.integration_id == integration_id,
+            EncryptedCredential.credential_type == "credentials",
+        )
+        result = await self.session.execute(stmt)
+        credential = result.scalar_one_or_none()
+
+        if credential:
+            credential.encrypted_value = encrypted
+            credential.updated_at = datetime.utcnow()
+        else:
+            credential = EncryptedCredential(
+                integration_id=integration_id,
+                credential_type="credentials",
+                encrypted_value=encrypted,
+            )
+            self.session.add(credential)
+
+        await self.session.commit()
+        await self.session.refresh(credential)
+        return credential
+
+    async def get_credentials_dict(self, integration_id: uuid.UUID) -> dict | None:
+        """Return the decrypted non-OAuth credential bundle, or None if absent."""
+        credential = await self.get_credentials(
+            integration_id, credential_type="credentials"
+        )
+        if credential is None:
+            return None
+        return json.loads(encryption_service.decrypt(credential.encrypted_value))
 
     async def get_credentials(
         self, integration_id: uuid.UUID, credential_type: str = "oauth_access_token"

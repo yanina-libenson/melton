@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiClient } from '@/lib/api/client'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useAuth } from '@/lib/contexts/auth-context'
+import { useAuditStream, type AuditEvent } from '@/lib/hooks/useAuditStream'
+import { LiveToolIndicator } from '@/components/live-tool-indicator'
 
 interface ExecutionTrace {
   id: string
@@ -59,20 +61,9 @@ export default function AuditPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedConversations, setExpandedConversations] = useState<Set<string>>(new Set())
+  const [activeConversationIds, setActiveConversationIds] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      router.push('/auth')
-    }
-  }, [isAuthenticated, authLoading, router])
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadAuditTrail()
-    }
-  }, [isAuthenticated])
-
-  const loadAuditTrail = async () => {
+  const loadAuditTrail = useCallback(async () => {
     try {
       setLoading(true)
       const response = await apiClient.getAuditTrail()
@@ -84,7 +75,59 @@ export default function AuditPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  // Handle streaming events
+  const handleToolStart = useCallback((event: AuditEvent) => {
+    setActiveConversationIds((prev) => {
+      const next = new Set(prev)
+      next.add(event.data.conversation_id)
+      return next
+    })
+  }, [])
+
+  const handleToolComplete = useCallback((event: AuditEvent) => {
+    // Keep conversation active briefly after tool completes
+    setTimeout(() => {
+      setActiveConversationIds((prev) => {
+        const next = new Set(prev)
+        next.delete(event.data.conversation_id)
+        return next
+      })
+    }, 2000)
+  }, [])
+
+  const handleMessageComplete = useCallback(() => {
+    // Refresh conversation list when a message completes
+    loadAuditTrail()
+  }, [loadAuditTrail])
+
+  const handleConversationStart = useCallback(() => {
+    // Refresh conversation list when a new conversation starts
+    loadAuditTrail()
+  }, [loadAuditTrail])
+
+  // Set up audit streaming
+  const { isConnected, activeTools } = useAuditStream({
+    enabled: isAuthenticated,
+    onToolStart: handleToolStart,
+    onToolComplete: handleToolComplete,
+    onMessageComplete: handleMessageComplete,
+    onConversationStart: handleConversationStart,
+    onError: (err) => console.error('Audit stream error:', err),
+  })
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/auth')
+    }
+  }, [isAuthenticated, authLoading, router])
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadAuditTrail()
+    }
+  }, [isAuthenticated, loadAuditTrail])
 
   const toggleConversation = (conversationId: string) => {
     const newExpanded = new Set(expandedConversations)
@@ -117,13 +160,29 @@ export default function AuditPage() {
       <div className="mx-auto max-w-7xl px-8 py-16">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-foreground mb-2 text-4xl font-semibold tracking-tight">
-            Audit Trail
-          </h1>
-          <p className="text-muted-foreground text-sm">
+          <div className="flex items-center gap-4">
+            <h1 className="text-foreground text-4xl font-semibold tracking-tight">Audit Trail</h1>
+            {isConnected && (
+              <div className="flex items-center gap-2 rounded-full bg-green-500/10 px-3 py-1 text-xs font-medium text-green-600 dark:text-green-400">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span>
+                </span>
+                Live
+              </div>
+            )}
+          </div>
+          <p className="text-muted-foreground mt-2 text-sm">
             Monitor all conversations across your agents
           </p>
         </div>
+
+        {/* Live Tool Executions */}
+        {activeTools.length > 0 && (
+          <div className="mb-6">
+            <LiveToolIndicator tools={activeTools} />
+          </div>
+        )}
 
         {conversations.length === 0 ? (
           <div className="border-border bg-card rounded-xl border p-12 text-center">
@@ -136,10 +195,15 @@ export default function AuditPage() {
           <div className="space-y-4">
             {conversations.map((conv) => {
               const isExpanded = expandedConversations.has(conv.conversation_id)
+              const isActive = activeConversationIds.has(conv.conversation_id)
               return (
                 <div
                   key={conv.conversation_id}
-                  className="border-border bg-card overflow-hidden rounded-xl border"
+                  className={`overflow-hidden rounded-xl border transition-all duration-300 ${
+                    isActive
+                      ? 'border-primary/50 bg-primary/5 ring-primary/20 ring-2'
+                      : 'border-border bg-card'
+                  }`}
                 >
                   {/* Conversation Header */}
                   <div
@@ -159,6 +223,15 @@ export default function AuditPage() {
                         <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-xs">
                           {conv.message_count} messages
                         </span>
+                        {isActive && (
+                          <span className="flex items-center gap-1.5 rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">
+                            <span className="relative flex h-1.5 w-1.5">
+                              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
+                              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500"></span>
+                            </span>
+                            Active
+                          </span>
+                        )}
                       </div>
                       <div className="ml-8 flex items-center gap-4 text-sm">
                         <span className="text-muted-foreground">

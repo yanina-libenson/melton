@@ -168,6 +168,38 @@ export const PLATFORM_INTEGRATIONS: PlatformIntegration[] = [
     authType: 'oauth',
     authFields: [],
   },
+  {
+    id: 'telepagos',
+    name: 'Transferir (TelePagos)',
+    description:
+      'Transferí pesos (ARS) a un alias o CVU/CBU. Acción irreversible: pide confirmación antes de ejecutar.',
+    icon: 'https://api.iconify.design/lucide/banknote.svg?color=%23888888',
+    category: 'Payments',
+    requiresAuth: true,
+    authFields: [
+      {
+        name: 'username',
+        label: 'Usuario API de TelePagos',
+        type: 'text',
+        placeholder: 'Usuario de la sección API (no el login web)',
+        required: true,
+      },
+      {
+        name: 'password',
+        label: 'Contraseña API de TelePagos',
+        type: 'password',
+        placeholder: 'Contraseña de la sección API',
+        required: true,
+      },
+      {
+        name: 'env',
+        label: 'Ambiente',
+        type: 'text',
+        placeholder: 'prod (producción) u homo (sandbox)',
+        required: true,
+      },
+    ],
+  },
 ]
 
 export const PLATFORM_TOOLS: Record<string, Tool[]> = {
@@ -283,6 +315,15 @@ export const PLATFORM_TOOLS: Record<string, Tool[]> = {
       name: 'Create Event',
       description: 'Schedule a new calendar event',
       sourceId: 'calendar',
+    },
+  ],
+  telepagos: [
+    {
+      id: 'transfer_money',
+      name: 'Transferir dinero',
+      description:
+        'Transferir pesos (ARS) a un alias o CVU/CBU. Requiere confirmación del usuario.',
+      sourceId: 'telepagos',
     },
   ],
   mercadolibre: [

@@ -9,7 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.llm.factory import LLMProviderFactory
 from app.models.agent import Agent
+from app.services.confirmation_intent import classify_confirmation
+from app.services.confirmation_service import ConfirmationService
 from app.services.conversation_service import ConversationService
+from app.services.event_bus import event_bus
 from app.services.llm_model_service import LLMModelService
 from app.tools.registry import ToolRegistry
 from app.utils.observability import observability_service, trace_execution
@@ -27,6 +30,38 @@ class ExecutionEvent:
         return {"type": self.type, **self.data}
 
 
+_CONFIRM_LABELS = {
+    "accion": "Acción",
+    "monto": "Monto",
+    "destino": "Destino",
+    "cuit": "CUIT",
+    "concepto": "Concepto",
+    "description": "Detalle",
+    "detalle": "Detalle",
+}
+
+
+def format_confirmation_prompt(summary: dict | None) -> str:
+    """Render a readable 'here's what I'll do, confirm?' message from a tool's
+    confirmation_summary, so the user sees the operation BEFORE approving."""
+    if not isinstance(summary, dict) or not summary:
+        return "Necesito tu confirmación para continuar. ¿Confirmás? (sí/no)"
+
+    irreversible = bool(summary.get("irreversible"))
+    lines = []
+    for key, value in summary.items():
+        if key == "irreversible" or value is None or value == "":
+            continue
+        label = _CONFIRM_LABELS.get(key, key.replace("_", " ").capitalize())
+        if key == "monto":
+            value = f"${value} ARS"
+        lines.append(f"• {label}: {value}")
+
+    body = "\n".join(lines)
+    warning = "\n\n⚠️ Esta acción es irreversible." if irreversible else ""
+    return f"📋 Esto es lo que voy a hacer:\n{body}{warning}\n\n¿Confirmás? (sí/no)"
+
+
 class AgentExecutionService:
     """
     Orchestrates agent conversations with streaming.
@@ -37,8 +72,8 @@ class AgentExecutionService:
     def __init__(self, session: AsyncSession):
         self.session = session
         self.conversation_service = ConversationService(session)
+        self.confirmation_service = ConfirmationService(session)
         self.llm_model_service = LLMModelService(session)
-        self.tool_registry = ToolRegistry()
 
     @trace_execution("agent_conversation")
     async def execute_conversation(
@@ -73,8 +108,11 @@ class AgentExecutionService:
 
             yield ExecutionEvent("agent_loaded", agent_id=str(agent.id))
 
-            # 2. Register agent tools
-            await self._register_agent_tools(agent, user_api_keys)
+            # 2. Register agent tools into a registry scoped to THIS execution only.
+            # Never a shared/global registry: tool instances carry per-user
+            # credentials and must not leak across concurrent conversations.
+            tool_registry = ToolRegistry()
+            await self._register_agent_tools(agent, tool_registry, user_api_keys)
 
             # 3. Get or create conversation (STATEFUL)
             conversation = await self.conversation_service.get_or_create_conversation(
@@ -86,10 +124,30 @@ class AgentExecutionService:
 
             yield ExecutionEvent("conversation_started", conversation_id=str(conversation.id))
 
+            # Publish conversation_started event to audit stream
+            await event_bus.publish(
+                event_bus.create_event(
+                    event_type="conversation_started",
+                    conversation_id=str(conversation.id),
+                    agent_id=str(agent.id),
+                    agent_name=agent.name,
+                )
+            )
+
             # 4. Save user message
             await self.conversation_service.save_message(
                 conversation_id=conversation.id, role="user", content=user_message
             )
+
+            # 4b. If this conversation is awaiting a confirmation, THIS message is
+            # the user's answer (sí/no). Handle it and stop — don't run the LLM.
+            pending = await self.confirmation_service.get_pending(conversation.id)
+            if pending is not None:
+                async for ev in self._handle_confirmation_reply(
+                    agent, conversation, pending, user_message, tool_registry
+                ):
+                    yield ev
+                return
 
             # 5. Build conversation history
             history = await self.conversation_service.get_conversation_history(conversation.id)
@@ -208,6 +266,7 @@ class AgentExecutionService:
                 all_tool_calls = []
                 final_response_content = ""
                 created_entities = {}  # Track entities created during execution (IDs, references, etc.)
+                execution_traces = []  # Durable ExecutionTrace rows, persisted after the final message
 
                 while iteration < max_iterations:
                     iteration += 1
@@ -215,6 +274,7 @@ class AgentExecutionService:
                     # Stream LLM response
                     assistant_content = ""
                     tool_uses = []  # Track tool uses in this turn
+                    pending_confirmation = None  # set if a requires_confirmation tool is hit
 
                     async for event in provider.stream_with_tools(
                         model=agent.model_config.get("model"),
@@ -230,15 +290,50 @@ class AgentExecutionService:
                             yield ExecutionEvent("content_delta", delta=event.delta)
 
                         elif event.type == "tool_use_start":
+                            # Money-safety gate: if this tool requires confirmation,
+                            # do NOT execute. Capture it and break to suspend the
+                            # loop; the user must approve in a later turn.
+                            _tool_obj = tool_registry.get(event.tool_name)
+                            if _tool_obj is not None and getattr(
+                                _tool_obj, "requires_confirmation", False
+                            ):
+                                pending_confirmation = {
+                                    "id": event.tool_use_id,
+                                    "name": event.tool_name,
+                                    "input": event.tool_input or {},
+                                }
+                                break
+
+                            # Look up tool description from tool schemas
+                            tool_description = None
+                            for schema in tool_schemas:
+                                if schema.get("name") == event.tool_name:
+                                    tool_description = schema.get("description")
+                                    break
+
                             yield ExecutionEvent(
                                 "tool_use_start",
                                 tool_name=event.tool_name,
                                 tool_input=event.tool_input,
+                                tool_description=tool_description,
+                            )
+
+                            # Publish to audit stream
+                            await event_bus.publish(
+                                event_bus.create_event(
+                                    event_type="tool_use_start",
+                                    conversation_id=str(conversation.id),
+                                    agent_id=str(agent.id),
+                                    agent_name=agent.name,
+                                    tool_name=event.tool_name,
+                                    tool_description=tool_description,
+                                    tool_input=event.tool_input or {},
+                                )
                             )
 
                             # Execute tool
                             start_time = time.time()
-                            tool_result = await self._execute_tool(event.tool_name, event.tool_input or {})
+                            tool_result = await self._execute_tool(tool_registry, event.tool_name, event.tool_input or {})
                             duration_ms = int((time.time() - start_time) * 1000)
 
                             # Track consecutive failures per tool
@@ -266,7 +361,7 @@ class AgentExecutionService:
                                         created_entities[key] = result_data[key]
                                         logger.info(f"Tracked created entity: {key}={result_data[key]}")
 
-                            # Trace tool execution
+                            # Trace tool execution (live, ephemeral -> LangFuse)
                             observability_service.trace_tool_execution(
                                 tool_name=event.tool_name,
                                 input_data=event.tool_input or {},
@@ -274,6 +369,19 @@ class AgentExecutionService:
                                 duration_ms=duration_ms,
                                 success=tool_success,
                             )
+
+                            # Accumulate a durable trace row (persisted to ExecutionTrace
+                            # after the final message is saved).
+                            execution_traces.append({
+                                "step_type": "tool_call",
+                                "step_data": {
+                                    "tool_name": event.tool_name,
+                                    "input": event.tool_input or {},
+                                    "output": tool_result,
+                                    "success": tool_success,
+                                },
+                                "duration_ms": duration_ms,
+                            })
 
                             # Track tool use with ID
                             tool_uses.append({
@@ -294,6 +402,29 @@ class AgentExecutionService:
                                 tool_name=event.tool_name,
                                 result=tool_result,
                             )
+
+                            # Publish to audit stream
+                            await event_bus.publish(
+                                event_bus.create_event(
+                                    event_type="tool_use_complete",
+                                    conversation_id=str(conversation.id),
+                                    agent_id=str(agent.id),
+                                    agent_name=agent.name,
+                                    tool_name=event.tool_name,
+                                    tool_success=tool_success,
+                                    duration_ms=duration_ms,
+                                )
+                            )
+
+                    # A tool requiring confirmation was hit: suspend (create the
+                    # gate, emit confirmation_required) and stop. The user's next
+                    # message will approve or reject it.
+                    if pending_confirmation is not None:
+                        async for ev in self._suspend_for_confirmation(
+                            agent, conversation, tool_registry, assistant_content, pending_confirmation
+                        ):
+                            yield ev
+                        return
 
                     # If no tools were called, we have the final response
                     if len(tool_uses) == 0:
@@ -447,15 +578,15 @@ class AgentExecutionService:
 
                     # Continue loop to get next LLM response
 
-                # 9. Save agent response
-                await self.conversation_service.save_message(
+                # 9. Save agent response (returns the persisted Message with a real id)
+                agent_message = await self.conversation_service.save_message(
                     conversation_id=conversation.id,
                     role="agent",
                     content=final_response_content,
                     tool_calls=all_tool_calls,
                 )
 
-                # Trace LLM call
+                # Trace LLM call (live, ephemeral -> LangFuse)
                 observability_service.trace_llm_call(
                     model=agent.model_config.get("model"),
                     provider=provider_type,
@@ -464,7 +595,33 @@ class AgentExecutionService:
                     metadata={"tool_calls": len(all_tool_calls), "iterations": iteration},
                 )
 
+                # Persist durable execution traces linked to the saved message.
+                execution_traces.append({
+                    "step_type": "llm_call",
+                    "step_data": {
+                        "model": agent.model_config.get("model"),
+                        "provider": provider_type,
+                        "iterations": iteration,
+                        "tool_calls": len(all_tool_calls),
+                    },
+                    "duration_ms": None,
+                })
+                await self.conversation_service.save_execution_traces(
+                    agent_message.id, execution_traces
+                )
+
                 yield ExecutionEvent("message_complete", message_id=str(uuid.uuid4()))
+
+                # Publish to audit stream
+                await event_bus.publish(
+                    event_bus.create_event(
+                        event_type="message_complete",
+                        conversation_id=str(conversation.id),
+                        agent_id=str(agent.id),
+                        agent_name=agent.name,
+                        tool_calls_count=len(all_tool_calls),
+                    )
+                )
 
             finally:
                 # Clean up provider
@@ -524,10 +681,15 @@ class AgentExecutionService:
 
         return tool_schemas
 
-    async def _register_agent_tools(self, agent: Agent, user_api_keys: dict[str, str] | None = None):
+    async def _register_agent_tools(
+        self,
+        agent: Agent,
+        tool_registry: ToolRegistry,
+        user_api_keys: dict[str, str] | None = None,
+    ):
         """
-        Register all enabled tools for the agent in the tool registry.
-        Creates tool instances from database models and registers them.
+        Register all enabled tools for the agent into the given (per-execution)
+        tool registry. Creates tool instances from database models.
         """
         import logging
         logger = logging.getLogger(__name__)
@@ -559,12 +721,14 @@ class AgentExecutionService:
                         organization_id=agent.organization_id,
                     )
 
-                    # Register in registry
-                    self.tool_registry.register(tool_name, tool_instance)
+                    # Register in the per-execution registry
+                    tool_registry.register(tool_name, tool_instance)
 
-    async def _execute_tool(self, tool_name: str, tool_input: dict[str, Any]) -> dict[str, Any]:
-        """Execute a tool by name."""
-        tool = self.tool_registry.get(tool_name)
+    async def _execute_tool(
+        self, tool_registry: ToolRegistry, tool_name: str, tool_input: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Execute a tool by name from the per-execution registry."""
+        tool = tool_registry.get(tool_name)
 
         if not tool:
             return {"success": False, "error": f"Tool {tool_name} not found"}
@@ -574,6 +738,172 @@ class AgentExecutionService:
             return result
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    async def _suspend_for_confirmation(
+        self, agent, conversation, tool_registry: ToolRegistry, assistant_content: str, tool_use: dict
+    ) -> AsyncIterator["ExecutionEvent"]:
+        """Persist a ConfirmationRequest for a suspended tool call and emit
+        confirmation_required, then stop. The reference_id is generated and
+        stored here so a later approval reuses it (idempotent execution)."""
+        tool = tool_registry.get(tool_use["name"])
+        summary = (
+            tool.confirmation_summary(tool_use["input"]) if tool is not None else tool_use["input"]
+        )
+        reference_id = uuid.uuid4().hex
+
+        # Always present the operation summary BEFORE asking to confirm. Any
+        # lead text the model already streamed stays; we append the structured
+        # summary + the confirm question.
+        summary_prompt = format_confirmation_prompt(summary)
+        lead_text = (assistant_content or "").strip()
+        delta = (lead_text + "\n\n" + summary_prompt) if lead_text else summary_prompt
+        if lead_text:
+            # lead_text already streamed during the turn; only stream the summary.
+            yield ExecutionEvent("content_delta", delta="\n\n" + summary_prompt)
+        else:
+            yield ExecutionEvent("content_delta", delta=summary_prompt)
+
+        agent_msg = await self.conversation_service.save_message(
+            conversation_id=conversation.id,
+            role="agent",
+            content=delta,
+            tool_calls=[{
+                "tool_name": tool_use["name"],
+                "input": tool_use["input"],
+                "pending_confirmation": True,
+            }],
+        )
+
+        await self.confirmation_service.create_pending(
+            conversation_id=conversation.id,
+            message_id=agent_msg.id,
+            tool_use_id=tool_use["id"],
+            tool_name=tool_use["name"],
+            tool_args=tool_use["input"],
+            reference_id=reference_id,
+            summary=summary,
+        )
+
+        yield ExecutionEvent(
+            "confirmation_required",
+            tool_name=tool_use["name"],
+            summary=summary,
+            reference_id=reference_id,
+        )
+        await event_bus.publish(
+            event_bus.create_event(
+                event_type="confirmation_required",
+                conversation_id=str(conversation.id),
+                agent_id=str(agent.id),
+                agent_name=agent.name,
+                tool_name=tool_use["name"],
+                summary=summary,
+            )
+        )
+        yield ExecutionEvent("message_complete", message_id=str(agent_msg.id))
+
+    async def _handle_confirmation_reply(
+        self, agent, conversation, pending, user_message: str, tool_registry: ToolRegistry
+    ) -> AsyncIterator["ExecutionEvent"]:
+        """Resolve a pending confirmation from the user's sí/no reply. On yes,
+        approve exactly-once and execute the tool with the stored reference_id."""
+        decision = classify_confirmation(user_message)
+
+        if decision == "ambiguous":
+            # Re-show the summary (the user may be asking to see it) + ask again.
+            msg = format_confirmation_prompt(pending.summary)
+            yield ExecutionEvent("content_delta", delta=msg)
+            saved = await self.conversation_service.save_message(conversation.id, "agent", msg)
+            yield ExecutionEvent("message_complete", message_id=str(saved.id))
+            return
+
+        if decision == "no":
+            await self.confirmation_service.reject(pending.id)
+            msg = "Listo, cancelé la operación. No se hizo nada."
+            yield ExecutionEvent("content_delta", delta=msg)
+            saved = await self.conversation_service.save_message(conversation.id, "agent", msg)
+            await event_bus.publish(
+                event_bus.create_event(
+                    event_type="confirmation_rejected",
+                    conversation_id=str(conversation.id),
+                    agent_id=str(agent.id),
+                    agent_name=agent.name,
+                    tool_name=pending.tool_name,
+                )
+            )
+            yield ExecutionEvent("message_complete", message_id=str(saved.id))
+            return
+
+        # decision == "yes": atomic approve (exactly-once), then execute.
+        approved = await self.confirmation_service.approve(pending.id)
+        if not approved:
+            msg = "Esa confirmación ya no está disponible (venció o ya se procesó)."
+            yield ExecutionEvent("content_delta", delta=msg)
+            saved = await self.conversation_service.save_message(conversation.id, "agent", msg)
+            yield ExecutionEvent("message_complete", message_id=str(saved.id))
+            return
+
+        tool = tool_registry.get(pending.tool_name)
+        duration_ms = None
+        if tool is None:
+            result = {"success": False, "error": f"La herramienta {pending.tool_name} no está disponible."}
+        else:
+            start_time = time.time()
+            try:
+                # Pass the stored reference_id so a retry never double-acts.
+                result = await tool.execute({**pending.tool_args, "reference_id": pending.reference_id})
+            except Exception as e:
+                result = {"success": False, "error": str(e)}
+            duration_ms = int((time.time() - start_time) * 1000)
+
+        success = result.get("success", True) if isinstance(result, dict) else True
+        if not success:
+            msg = f"❌ No se pudo completar: {result.get('error', 'error desconocido')}"
+        else:
+            msg = (result.get("message") if isinstance(result, dict) else None) or "✅ Operación confirmada y completada."
+
+        yield ExecutionEvent("content_delta", delta=msg)
+        agent_msg = await self.conversation_service.save_message(
+            conversation_id=conversation.id,
+            role="agent",
+            content=msg,
+            tool_calls=[{"tool_name": pending.tool_name, "input": pending.tool_args, "output": result}],
+        )
+        await self.conversation_service.save_execution_traces(
+            agent_msg.id,
+            [{
+                "step_type": "tool_call",
+                "step_data": {
+                    "tool_name": pending.tool_name,
+                    "input": pending.tool_args,
+                    "output": result,
+                    "success": success,
+                    "confirmed": True,
+                    "reference_id": pending.reference_id,
+                },
+                "duration_ms": duration_ms,
+            }],
+        )
+        observability_service.trace_tool_execution(
+            tool_name=pending.tool_name,
+            input_data=pending.tool_args,
+            output_data=result,
+            duration_ms=duration_ms or 0,
+            success=success,
+        )
+        await event_bus.publish(
+            event_bus.create_event(
+                event_type="tool_use_complete",
+                conversation_id=str(conversation.id),
+                agent_id=str(agent.id),
+                agent_name=agent.name,
+                tool_name=pending.tool_name,
+                tool_success=success,
+                duration_ms=duration_ms,
+            )
+        )
+        yield ExecutionEvent("tool_use_complete", tool_name=pending.tool_name, result=result)
+        yield ExecutionEvent("message_complete", message_id=str(agent_msg.id))
 
     def _get_api_key(self, provider_type: str, user_api_keys: dict[str, str] | None) -> str:
         """Get API key for provider (user-provided or system default)."""

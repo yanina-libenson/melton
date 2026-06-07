@@ -94,7 +94,7 @@ async def test_list_agents_for_user(test_session: AsyncSession):
     for i in range(3):
         agent_data = AgentCreate(
             name=f"Agent {i}",
-            instructions="Test instructions",
+            instructions="You are a helpful test agent.",
             status="draft",
             model_config=ModelConfig(
                 provider="anthropic",
