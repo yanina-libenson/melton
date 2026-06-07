@@ -65,7 +65,7 @@ async def health() -> dict[str, str]:
 
 
 # API routers
-from app.api.v1 import agents, audit_stream, auth, conversations, integrations, llm_models, oauth, permissions, playground, shared, tools, uploads, user_settings
+from app.api.v1 import agents, audit_stream, auth, conversations, integrations, llm_models, oauth, permissions, playground, shared, tools, uploads, user_settings, voice
 
 app.include_router(auth.router, prefix=f"{settings.api_v1_prefix}/auth", tags=["auth"])
 app.include_router(agents.router, prefix=f"{settings.api_v1_prefix}/agents", tags=["agents"])
@@ -84,6 +84,7 @@ app.include_router(conversations.router, prefix=settings.api_v1_prefix)
 app.include_router(user_settings.router, prefix=settings.api_v1_prefix)
 app.include_router(uploads.router, prefix=settings.api_v1_prefix)
 app.include_router(audit_stream.router, prefix=settings.api_v1_prefix)
+app.include_router(voice.router, prefix=f"{settings.api_v1_prefix}/agents", tags=["voice"])
 
 # Mount static files for uploaded images
 UPLOADS_DIR = Path("uploads")
