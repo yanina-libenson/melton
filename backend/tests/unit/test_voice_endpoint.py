@@ -105,6 +105,41 @@ async def test_voice_confirmation_required(test_session, sample_agent, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_voice_unifies_with_passed_conversation_id(test_session, sample_agent, monkeypatch):
+    """When the client passes conversation_id (the unified text+voice thread),
+    the voice turn continues THAT conversation and echoes it back."""
+    from app.models.conversation import Conversation
+
+    conv = Conversation(agent_id=sample_agent.id, channel_type="playground")
+    test_session.add(conv)
+    await test_session.flush()
+    cid = str(conv.id)
+
+    def events(conv_id):
+        return [
+            ExecutionEvent("conversation_started", conversation_id=str(conv_id)),
+            ExecutionEvent("content_delta", delta="ok"),
+            ExecutionEvent("message_complete", message_id="m1"),
+        ]
+
+    captured = _wire(monkeypatch, test_session, sample_agent, events)
+    try:
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            r = await ac.post(
+                f"/api/v1/agents/{sample_agent.id}/voice",
+                files={"audio": ("a.m4a", b"rawaudio", "audio/m4a")},
+                data={"session_id": "s1", "conversation_id": cid},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert r.status_code == 200
+    assert r.headers["x-conversation-id"] == cid
+    assert str(captured["conversation_id"]) == cid
+
+
+@pytest.mark.asyncio
 async def test_voice_no_openai_key_returns_error(test_session, sample_agent, monkeypatch):
     monkeypatch.setattr(settings, "openai_api_key", "")
     monkeypatch.setattr("app.api.v1.voice.VoiceService", _FakeVoice)
