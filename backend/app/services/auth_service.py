@@ -66,10 +66,39 @@ class AuthService:
             "sub": str(user_id),
             "user_id": str(user_id),
             "organization_id": str(organization_id),
+            "type": "access",
             "exp": expire,
             "iat": datetime.utcnow(),
         }
         return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+
+    @staticmethod
+    def create_refresh_token(user_id: uuid.UUID, organization_id: uuid.UUID) -> str:
+        """Create a long-lived refresh token (only valid at /auth/refresh)."""
+        expire = datetime.utcnow() + timedelta(days=settings.refresh_token_expire_days)
+        payload = {
+            "sub": str(user_id),
+            "user_id": str(user_id),
+            "organization_id": str(organization_id),
+            "type": "refresh",
+            "exp": expire,
+            "iat": datetime.utcnow(),
+        }
+        return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+
+    @staticmethod
+    def verify_refresh_token(token: str) -> dict[str, uuid.UUID]:
+        """Verify a refresh token. Raises JWTError unless type == 'refresh'."""
+        try:
+            payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+            if payload.get("type") != "refresh":
+                raise JWTError("Not a refresh token")
+            return {
+                "user_id": uuid.UUID(payload["user_id"]),
+                "organization_id": uuid.UUID(payload["organization_id"]),
+            }
+        except (JWTError, KeyError, ValueError) as e:
+            raise JWTError(f"Invalid refresh token: {e}")
 
     @staticmethod
     def verify_token(token: str) -> dict[str, uuid.UUID]:
@@ -87,6 +116,8 @@ class AuthService:
         """
         try:
             payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+            if payload.get("type") == "refresh":
+                raise JWTError("Refresh token cannot be used for authentication")
             user_id = uuid.UUID(payload["user_id"])
             organization_id = uuid.UUID(payload["organization_id"])
             return {"user_id": user_id, "organization_id": organization_id}

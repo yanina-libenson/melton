@@ -26,6 +26,13 @@ class TokenResponse(BaseModel):
 
     access_token: str
     token_type: str = "bearer"
+    refresh_token: str | None = None
+
+
+class RefreshRequest(BaseModel):
+    """Schema for refreshing an access token."""
+
+    refresh_token: str
 
 
 class UserResponse(BaseModel):
