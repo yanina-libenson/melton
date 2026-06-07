@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     secret_key: str = "development-secret-key-change-in-production"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 30
 
     # LLM API Keys (optional - users can provide their own)
     anthropic_api_key: str | None = None

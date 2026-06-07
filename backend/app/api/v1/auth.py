@@ -5,9 +5,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from jose import JWTError
+
 from app.database import get_database_session
 from app.dependencies import CurrentUser
 from app.schemas.auth import (
+    RefreshRequest,
     SubdomainCheckResponse,
     SubdomainClaim,
     TokenResponse,
@@ -54,9 +57,10 @@ async def register(
             password=user_data.password,
             full_name=user_data.full_name,
         )
-        # Create token using user.id as both user_id and organization_id
+        # Create tokens using user.id as both user_id and organization_id
         token = AuthService.create_access_token(user.id, user.id)
-        return TokenResponse(access_token=token)
+        refresh = AuthService.create_refresh_token(user.id, user.id)
+        return TokenResponse(access_token=token, refresh_token=refresh)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -87,12 +91,30 @@ async def login(
             email=credentials.email,
             password=credentials.password,
         )
-        return TokenResponse(access_token=token)
+        refresh = AuthService.create_refresh_token(user.id, user.id)
+        return TokenResponse(access_token=token, refresh_token=refresh)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e),
         )
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_token(payload: RefreshRequest) -> TokenResponse:
+    """Exchange a valid refresh token for a new access token (rotates refresh)."""
+    try:
+        info = AuthService.verify_refresh_token(payload.refresh_token)
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+    user_id = info["user_id"]
+    org_id = info["organization_id"]
+    access = AuthService.create_access_token(user_id, org_id)
+    new_refresh = AuthService.create_refresh_token(user_id, org_id)
+    return TokenResponse(access_token=access, refresh_token=new_refresh)
 
 
 @router.get("/me", response_model=UserResponse)
