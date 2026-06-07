@@ -10,6 +10,15 @@ from app.main import app
 from app.services.execution_service import AgentExecutionService, ExecutionEvent
 
 
+def test_header_safe_strips_newlines_and_emojis():
+    from app.api.v1.voice import _header_safe
+
+    out = _header_safe("📋 Esto:\n• Monto: $1\twab ✅")
+    assert "\n" not in out and "\r" not in out and "\t" not in out  # no control chars
+    assert "📋" not in out and "✅" not in out  # emojis dropped (non-latin-1)
+    assert "Monto: $1" in out  # accents/text preserved
+
+
 class _FakeVoice:
     def __init__(self, *a, **k):
         pass

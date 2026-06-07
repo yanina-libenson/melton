@@ -34,8 +34,12 @@ logger = logging.getLogger(__name__)
 
 
 def _header_safe(text: str) -> str:
-    """HTTP headers are latin-1; drop emojis/other non-latin-1 chars (keeps accents)."""
-    return text.encode("latin-1", "ignore").decode("latin-1")[:480]
+    """Make text safe for an HTTP header: drop non-latin-1 (emojis) AND collapse
+    control chars like newlines/tabs to spaces (newlines in a header value raise
+    'Invalid HTTP header value')."""
+    latin1 = text.encode("latin-1", "ignore").decode("latin-1")
+    collapsed = "".join(c if c.isprintable() else " " for c in latin1)
+    return collapsed[:480]
 
 
 def _voice_response(
