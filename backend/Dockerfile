@@ -25,7 +25,7 @@ COPY . .
 EXPOSE 8000
 
 # Create start script that runs migrations then starts app
-RUN printf '#!/bin/bash\nset -e\necho "Running database migrations..."\nalembic upgrade head\necho "Starting application..."\nexec uvicorn app.main:app --host 0.0.0.0 --port 8000\n' > /app/start.sh && chmod +x /app/start.sh
+RUN printf '#!/bin/bash\nset -e\necho "Running database migrations..."\nalembic upgrade head\necho "Starting application..."\nexec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}\n' > /app/start.sh && chmod +x /app/start.sh
 
 # Run the application with migrations
 CMD ["/app/start.sh"]

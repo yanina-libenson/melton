@@ -54,6 +54,8 @@ services:
         value: https://api.meltonagents.com
       - key: CORS_ORIGINS
         value: https://meltonagents.com,https://www.meltonagents.com,https://api.meltonagents.com
+      - key: BASE_DOMAIN
+        value: meltonagents.com
 
       # API
       - key: API_V1_PREFIX
@@ -96,13 +98,16 @@ services:
       sizeGB: 1
 
   # Frontend Next.js Service
+  # NOTE: free plan sleeps after ~15 min idle (cold start ~30-60s on next visit)
+  # and has monthly hour limits. Bump to `starter` ($7/mo) for always-on.
+  # Verify custom-domain support on free in the Render dashboard.
   - type: web
     name: melton-frontend
     runtime: docker
     dockerfilePath: ./frontend/Dockerfile
     dockerContext: ./frontend
     region: oregon
-    plan: starter
+    plan: free
     branch: main
     envVars:
       - key: NEXT_PUBLIC_API_URL

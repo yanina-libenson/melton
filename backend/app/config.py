@@ -1,5 +1,6 @@
 """Application configuration using Pydantic Settings."""
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -55,6 +56,23 @@ class Settings(BaseSettings):
         if self.cors_origins:
             return [origin.strip() for origin in self.cors_origins.split(",")]
         return ["http://localhost:3000", "http://localhost:3001"]
+
+    @model_validator(mode="after")
+    def _normalize_db_urls(self) -> "Settings":
+        """Managed Postgres (Render/Heroku) hands out a plain ``postgresql://``
+        (or ``postgres://``) URL. The async engine needs the asyncpg driver and
+        Alembic (sync) needs the plain/psycopg2 URL — coerce both so the same
+        provider connection string works for either."""
+        if self.database_url.startswith("postgres://"):
+            self.database_url = "postgresql://" + self.database_url[len("postgres://"):]
+        if self.database_url.startswith("postgresql://"):
+            self.database_url = "postgresql+asyncpg://" + self.database_url[len("postgresql://"):]
+
+        if self.database_url_sync.startswith("postgres://"):
+            self.database_url_sync = "postgresql://" + self.database_url_sync[len("postgres://"):]
+        if self.database_url_sync.startswith("postgresql+asyncpg://"):
+            self.database_url_sync = "postgresql://" + self.database_url_sync[len("postgresql+asyncpg://"):]
+        return self
 
     # API
     api_v1_prefix: str = "/api/v1"
