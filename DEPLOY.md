@@ -27,19 +27,29 @@ landing/short-link, no como dominio del producto.
 1. Conectá el repo a Render (New → Blueprint) y apuntá a `melton/render.yaml`.
 2. Render crea: `melton-postgres`, `melton-backend`, `melton-frontend`.
 
-## 3. Secrets a cargar en el dashboard de Render (los marcados `sync: false`)
+## 3. Secrets / env vars
 
-Backend (`melton-backend` → Environment):
+**Las API keys de LLM/OpenAI son config POR USUARIO, no secrets del sistema.**
+Cada usuario carga su key en el panel (Settings) → se guarda encriptada
+(`UserApiKey`). El código usa la key del usuario primero y solo cae al env var
+del sistema como fallback. Por eso, lo normal es:
 
-- [ ] **`OPENAI_API_KEY`** — REQUERIDA para voz (Whisper STT + TTS). Sin esto, la voz no anda.
-- [ ] `ANTHROPIC_API_KEY` — recomendada como fallback del sistema para el LLM de los agentes (si no, cada usuario debe cargar la suya en el panel).
-- [ ] `GOOGLE_API_KEY` — opcional.
+- [ ] **Después del deploy**, entrá al panel de prod → Settings y cargá tu
+      `OPENAI_API_KEY` (para voz: Whisper STT + TTS) y tu key de LLM
+      (Anthropic/OpenAI/Google) para tus agentes. La DB de prod arranca vacía,
+      así que se recargan ahí (no migran del dev local).
+
+Env vars del sistema en Render (TODAS OPCIONALES — solo fallback para usuarios
+que no cargaron su propia key, p. ej. un agente del sistema/compartido):
+
+- [ ] `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` — opcionales.
 - [ ] `MERCADOLIBRE_CLIENT_ID` / `MERCADOLIBRE_CLIENT_SECRET` — solo si usás la integración ML.
 - [ ] `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` — opcional (observabilidad).
 
-Auto-generadas por Render (`generateValue: true`, no tocar):
+Requeridas pero AUTOMÁTICAS (no las cargás a mano):
 
-- `SECRET_KEY` (firma JWT) y `ENCRYPTION_KEY` (Fernet).
+- `DATABASE_URL` / `DATABASE_URL_SYNC` — del Postgres gestionado (`fromDatabase`).
+- `SECRET_KEY` (firma JWT) y `ENCRYPTION_KEY` (Fernet) — `generateValue: true`.
 
 > ⚠️ **CRÍTICO — `ENCRYPTION_KEY`**: con esta key se encriptan las credenciales de
 > las integraciones (ej. TelePagos) en la DB. Render la genera una vez y la
@@ -70,7 +80,7 @@ Auto-generadas por Render (`generateValue: true`, no tocar):
 ## 6. Notas
 
 - **Costo aprox. (USD/mes):** frontend `free` ($0), backend `starter` (~$7),
-  Postgres `starter` (~$6–7), disco 1 GB (~$0.25) → **~$13–14/mes**. El frontend
+  Postgres `basic-256mb` (~$6), disco 1 GB (~$0.25) → **~$13/mes**. El frontend
   free **se duerme** tras ~15 min idle (cold start ~30–60s en la 1ª visita) y
   tiene límite de horas; subilo a `starter` (+$7) para always-on. Verificá en el
   dashboard si Free soporta dominio custom; si no, el frontend quedaría en
