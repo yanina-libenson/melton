@@ -53,7 +53,7 @@ services:
       - key: BACKEND_URL
         value: https://api.meltonagents.com
       - key: CORS_ORIGINS
-        value: https://meltonagents.com,https://www.meltonagents.com,https://api.meltonagents.com
+        value: https://meltonagents.com,https://www.meltonagents.com,https://melton-frontend.onrender.com
       - key: BASE_DOMAIN
         value: meltonagents.com
 
