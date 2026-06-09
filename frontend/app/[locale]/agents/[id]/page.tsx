@@ -30,6 +30,15 @@ import { AgentShareLink } from '@/components/agent-share-link'
 import { ToolStatusIndicator } from '@/components/tool-status-indicator'
 import { useAuth } from '@/lib/contexts/auth-context'
 
+// Display labels for deployment channels (the API returns raw channel ids).
+const CHANNEL_LABELS: Record<string, string> = {
+  web: 'Web',
+  whatsapp: 'WhatsApp',
+  email: 'Email',
+  mobile: 'Mobile',
+  apple_watch: 'Apple Watch',
+}
+
 export default function AgentPage({ params }: { params: Promise<{ id: string; locale: string }> }) {
   const t = useTranslations('agentDetail')
   const tTest = useTranslations('test')
@@ -68,7 +77,7 @@ export default function AgentPage({ params }: { params: Promise<{ id: string; lo
     mutate,
   } = useAgent(isNewAgent ? null : resolvedParams.id)
 
-  const { createAgent, updateAgent } = useAgentMutations()
+  const { createAgent, updateAgent, deleteAgent } = useAgentMutations()
 
   // Fetch user's permission for this agent
   const { data: userPermission } = useSWR(
@@ -281,6 +290,19 @@ export default function AgentPage({ params }: { params: Promise<{ id: string; lo
       } else {
         toast.error(result.error || 'Failed to update agent')
       }
+    }
+  }
+
+  async function handleDeleteAgent() {
+    if (!agent || isNewAgent) return
+    if (!window.confirm(t('deleteConfirm', { name: agent.name }))) return
+
+    const result = await deleteAgent(agent.id)
+    if (result.success) {
+      toast.success(t('successDeleted'))
+      router.push('/agents')
+    } else {
+      toast.error(result.error || 'Failed to delete agent')
     }
   }
 
@@ -661,13 +683,35 @@ export default function AgentPage({ params }: { params: Promise<{ id: string; lo
                 {t('connectLabel')}
               </Label>
 
-              <Link href={`/agents/${resolvedParams.id}/deploy`} className="group block">
-                <div className="border-border hover:border-primary/50 hover:bg-accent/30 cursor-pointer rounded-xl border-2 border-dashed py-16 text-center transition-all">
-                  <p className="text-muted-foreground group-hover:text-foreground text-sm transition-colors">
-                    {t('connectToChannels')}
-                  </p>
-                </div>
-              </Link>
+              {agent.channels && agent.channels.length > 0 ? (
+                <Link href={`/agents/${resolvedParams.id}/deploy`} className="group block">
+                  <div className="border-border bg-card shadow-soft-xs hover:shadow-soft-sm cursor-pointer rounded-xl border px-5 py-4 transition-all duration-200 ease-out hover:-translate-y-0.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap gap-2">
+                        {agent.channels.map((ch) => (
+                          <span
+                            key={ch}
+                            className="rounded-full bg-green-500/10 px-2.5 py-1 text-xs font-medium text-green-600"
+                          >
+                            {CHANNEL_LABELS[ch] || ch}
+                          </span>
+                        ))}
+                      </div>
+                      <span className="text-muted-foreground group-hover:text-foreground transition-colors">
+                        →
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              ) : (
+                <Link href={`/agents/${resolvedParams.id}/deploy`} className="group block">
+                  <div className="border-border hover:border-primary/50 hover:bg-accent/30 cursor-pointer rounded-xl border-2 border-dashed py-16 text-center transition-all">
+                    <p className="text-muted-foreground group-hover:text-foreground text-sm transition-colors">
+                      {t('connectToChannels')}
+                    </p>
+                  </div>
+                </Link>
+              )}
             </div>
 
             {/* Sharing & Permissions - Only show for existing agents with admin permission and not in force use mode */}
@@ -681,6 +725,27 @@ export default function AgentPage({ params }: { params: Promise<{ id: string; lo
                   <AgentShareLink agentId={resolvedParams.id} />
                 </div>
               </>
+            )}
+
+            {/* Danger zone — existing agents only */}
+            {!isNewAgent && (
+              <div className="mb-12 rounded-xl border border-red-200 p-5 dark:border-red-900/40">
+                <Label className="mb-3 block text-sm font-medium text-red-600 dark:text-red-400">
+                  {t('dangerZone')}
+                </Label>
+                <div className="flex items-center justify-between gap-4">
+                  <p className="text-muted-foreground text-xs">
+                    {t('deleteConfirm', { name: agent.name })}
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={handleDeleteAgent}
+                    className="shrink-0 border-red-300 text-red-600 hover:bg-red-50 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30"
+                  >
+                    {t('deleteAgent')}
+                  </Button>
+                </div>
+              </div>
             )}
 
             {/* Actions */}

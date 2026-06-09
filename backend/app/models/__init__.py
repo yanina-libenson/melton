@@ -19,6 +19,7 @@ from app.models.message import Message
 from app.models.tool import Tool
 from app.models.user import User
 from app.models.user_api_key import UserApiKey
+from app.models.user_memory import UserMemory
 
 __all__ = [
     "Agent",
@@ -34,4 +35,5 @@ __all__ = [
     "LLMModel",
     "User",
     "UserApiKey",
+    "UserMemory",
 ]

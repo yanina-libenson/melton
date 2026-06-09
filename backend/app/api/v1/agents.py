@@ -7,9 +7,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_database_session
-from app.dependencies import AgentServiceDep, CurrentUser, PermissionServiceDep
+from app.dependencies import (
+    AgentServiceDep,
+    CurrentUser,
+    DeploymentServiceDep,
+    PermissionServiceDep,
+)
 from app.schemas.agent import AgentCreate, AgentResponse, AgentUpdate
+from app.schemas.deployment import DeploymentResponse
 from app.schemas.integration import IntegrationResponse
+from app.services.deployment_service import DEPLOYMENT_CHANNELS
 from app.services.integration_service import IntegrationService
 
 router = APIRouter()
@@ -37,6 +44,7 @@ async def list_agents(
     permission_service: PermissionServiceDep,
     include_shared: bool = True,
     admin_only: bool = True,
+    channel: str | None = None,
 ) -> list[AgentResponse]:
     """
     List agents for the current user.
@@ -44,6 +52,8 @@ async def list_agents(
     By default, returns only agents the user can manage (admin permission).
     Set admin_only=false to include agents with "use" permission.
     Set include_shared=false to only show owned agents (ignore shared).
+    Pass channel=mobile / channel=apple_watch / etc. to return only agents
+    actively deployed to that channel (used by the mobile and watch apps).
     """
     # Get owned agents (user always has admin permission on these)
     owned_agents = await agent_service.list_agents_for_user(
@@ -51,21 +61,23 @@ async def list_agents(
         organization_id=current_user["organization_id"],
     )
 
-    if not include_shared:
-        return [AgentResponse.model_validate(agent) for agent in owned_agents]
+    if include_shared:
+        # Get shared agents (with optional admin-only filter)
+        shared_agents = await permission_service.list_user_agents(
+            user_id=current_user["user_id"],
+            permission_type="admin" if admin_only else None,
+        )
+        owned_ids = {agent.id for agent in owned_agents}
+        all_agents = list(owned_agents) + [
+            agent for agent in shared_agents if agent.id not in owned_ids
+        ]
+        all_agents.sort(key=lambda a: a.updated_at, reverse=True)
+    else:
+        all_agents = list(owned_agents)
 
-    # Get shared agents (with optional admin-only filter)
-    shared_agents = await permission_service.list_user_agents(
-        user_id=current_user["user_id"],
-        permission_type="admin" if admin_only else None,
-    )
-
-    # Combine and deduplicate (owned agents are already in the list)
-    owned_ids = {agent.id for agent in owned_agents}
-    all_agents = list(owned_agents) + [agent for agent in shared_agents if agent.id not in owned_ids]
-
-    # Sort by updated_at descending
-    all_agents.sort(key=lambda a: a.updated_at, reverse=True)
+    # Channel filter: only agents actively deployed to the requested channel.
+    if channel:
+        all_agents = [agent for agent in all_agents if channel in agent.channels]
 
     return [AgentResponse.model_validate(agent) for agent in all_agents]
 
@@ -158,6 +170,71 @@ async def delete_agent(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent with ID {agent_id} not found",
         )
+
+
+@router.get("/{agent_id}/deployments", response_model=list[DeploymentResponse])
+async def list_deployments(
+    agent_id: uuid.UUID,
+    current_user: CurrentUser,
+    permission_service: PermissionServiceDep,
+    deployment_service: DeploymentServiceDep,
+) -> list[DeploymentResponse]:
+    """List an agent's channel deployments. Requires access to the agent."""
+    if not await permission_service.has_permission(
+        agent_id=agent_id, user_id=current_user["user_id"]
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to access this agent",
+        )
+    deployments = await deployment_service.list_for_agent(agent_id)
+    return [DeploymentResponse.model_validate(d) for d in deployments]
+
+
+@router.put("/{agent_id}/deployments/{channel}", response_model=DeploymentResponse)
+async def deploy_to_channel(
+    agent_id: uuid.UUID,
+    channel: str,
+    current_user: CurrentUser,
+    permission_service: PermissionServiceDep,
+    deployment_service: DeploymentServiceDep,
+) -> DeploymentResponse:
+    """Deploy the agent to a channel. Requires 'admin' permission."""
+    if channel not in DEPLOYMENT_CHANNELS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unknown channel '{channel}'. Valid: {sorted(DEPLOYMENT_CHANNELS)}",
+        )
+    if not await permission_service.is_admin(
+        agent_id=agent_id, user_id=current_user["user_id"]
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have admin permission to deploy this agent",
+        )
+    deployment = await deployment_service.deploy(agent_id, channel)
+    return DeploymentResponse.model_validate(deployment)
+
+
+@router.delete(
+    "/{agent_id}/deployments/{channel}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def undeploy_from_channel(
+    agent_id: uuid.UUID,
+    channel: str,
+    current_user: CurrentUser,
+    permission_service: PermissionServiceDep,
+    deployment_service: DeploymentServiceDep,
+) -> None:
+    """Remove the agent's deployment on a channel. Requires 'admin' permission."""
+    if not await permission_service.is_admin(
+        agent_id=agent_id, user_id=current_user["user_id"]
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have admin permission to undeploy this agent",
+        )
+    await deployment_service.undeploy(agent_id, channel)
 
 
 @router.get("/{agent_id}/integrations", response_model=list[IntegrationResponse])

@@ -62,6 +62,10 @@ class AgentResponse(BaseModel):
     created_at: datetime = Field(..., serialization_alias="createdAt")
     updated_at: datetime = Field(..., serialization_alias="updatedAt")
     integrations: list["IntegrationResponse"] = Field(default=[])
+    # Derived from deployments (not the manual `status` field): active = deployed
+    # to ≥1 channel; channels = the active channel types.
+    is_active: bool = Field(default=False, serialization_alias="isActive")
+    channels: list[str] = Field(default=[])
 
     model_config = {"from_attributes": True, "populate_by_name": True}
 

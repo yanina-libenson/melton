@@ -112,7 +112,9 @@ class AgentExecutionService:
             # Never a shared/global registry: tool instances carry per-user
             # credentials and must not leak across concurrent conversations.
             tool_registry = ToolRegistry()
-            await self._register_agent_tools(agent, tool_registry, user_api_keys)
+            await self._register_agent_tools(
+                agent, tool_registry, user_api_keys, operator_user_id=user_id
+            )
 
             # 3. Get or create conversation (STATEFUL)
             conversation = await self.conversation_service.get_or_create_conversation(
@@ -153,7 +155,7 @@ class AgentExecutionService:
             history = await self.conversation_service.get_conversation_history(conversation.id)
 
             # 6. Get tool schemas
-            tool_schemas = await self._get_tool_schemas(agent)
+            tool_schemas = await self._get_tool_schemas(agent, operator_user_id=user_id)
 
             # DEBUG: Log tool schemas being sent to LLM
             import logging
@@ -660,8 +662,11 @@ class AgentExecutionService:
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
-    async def _get_tool_schemas(self, agent: Agent) -> list[dict[str, Any]]:
-        """Get tool schemas for agent's enabled tools."""
+    async def _get_tool_schemas(
+        self, agent: Agent, operator_user_id: uuid.UUID | None = None
+    ) -> list[dict[str, Any]]:
+        """Get tool schemas for agent's enabled tools. For an authenticated
+        operator, also expose the generic persistent-memory tools."""
         import logging
         logger = logging.getLogger(__name__)
 
@@ -679,6 +684,12 @@ class AgentExecutionService:
                     tool_schemas.append(schema)
                     logger.info(f"Adding tool schema for LLM: {tool.name} -> {schema}")
 
+        # Generic persistent-memory tools: available to any authenticated operator.
+        if operator_user_id is not None:
+            from app.tools.memory_tools import memory_tool_schemas
+
+            tool_schemas.extend(memory_tool_schemas())
+
         return tool_schemas
 
     async def _register_agent_tools(
@@ -686,10 +697,13 @@ class AgentExecutionService:
         agent: Agent,
         tool_registry: ToolRegistry,
         user_api_keys: dict[str, str] | None = None,
+        operator_user_id: uuid.UUID | None = None,
     ):
         """
         Register all enabled tools for the agent into the given (per-execution)
-        tool registry. Creates tool instances from database models.
+        tool registry. Creates tool instances from database models. For an
+        authenticated operator, also registers the generic persistent-memory
+        tools (scoped to that operator + this agent).
         """
         import logging
         logger = logging.getLogger(__name__)
@@ -723,6 +737,17 @@ class AgentExecutionService:
 
                     # Register in the per-execution registry
                     tool_registry.register(tool_name, tool_instance)
+
+        # Auto-include the generic persistent-memory tools for an authenticated
+        # operator. Scoped to (operator, this agent); skipped for anonymous
+        # channels (no personal store without a logged-in user).
+        if operator_user_id is not None:
+            from app.tools.memory_tools import build_memory_tools
+
+            for mem_tool in build_memory_tools(
+                operator_user_id, agent.organization_id, agent.id
+            ):
+                tool_registry.register(mem_tool.name, mem_tool)
 
     async def _execute_tool(
         self, tool_registry: ToolRegistry, tool_name: str, tool_input: dict[str, Any]

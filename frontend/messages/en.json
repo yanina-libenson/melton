@@ -101,7 +101,12 @@
     "successWhatsappConnected": "WhatsApp connected successfully",
     "errorEmailRequired": "Please enter an email address",
     "successEmailConnected": "Email integration configured successfully",
-    "successAgentActivated": "Agent activated"
+    "successAgentActivated": "Agent activated",
+    "channelsTitle": "Channels",
+    "channelsSubtitle": "Turn on the channels where this agent should be available. The agent shows as \"active\" if it's on at least one.",
+    "channelError": "Couldn't update the channel",
+    "mobileHint": "The agent appears in the Melton mobile app.",
+    "watchHint": "The agent appears in the Apple Watch app."
   },
   "agentDetail": {
     "newAgent": "New Agent",
@@ -122,7 +127,19 @@
     "errorNameRequired": "Agent name is required",
     "errorInstructionsTooShort": "Instructions must be at least 20 characters",
     "successCreated": "Agent created",
-    "successSaved": "Agent saved"
+    "successSaved": "Agent saved",
+    "statusLabel": "Status",
+    "statusActive": "Active",
+    "statusDraft": "Draft",
+    "statusInactive": "Inactive",
+    "statusActiveHint": "The agent is active and available.",
+    "statusInactiveHint": "The agent is inactive and won't respond.",
+    "statusActivated": "Agent activated",
+    "statusDeactivated": "Agent deactivated",
+    "dangerZone": "Danger zone",
+    "deleteAgent": "Delete agent",
+    "deleteConfirm": "Delete agent \"{name}\"? This cannot be undone.",
+    "successDeleted": "Agent deleted"
   },
   "toolsAdd": {
     "title": "Add Tool",

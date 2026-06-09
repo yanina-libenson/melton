@@ -215,7 +215,8 @@ class PermissionService:
             .join(AgentPermission, Agent.id == AgentPermission.agent_id)
             .where(AgentPermission.user_id == user_id)
             .options(
-                selectinload(Agent.integrations).selectinload(Integration.tools)
+                selectinload(Agent.integrations).selectinload(Integration.tools),
+                selectinload(Agent.deployments),
             )
         )
 

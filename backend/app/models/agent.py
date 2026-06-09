@@ -55,5 +55,17 @@ class Agent(Base):
         "AgentPermission", back_populates="agent", cascade="all, delete-orphan"
     )
 
+    @property
+    def channels(self) -> list[str]:
+        """Channel types the agent is actively deployed to. Requires
+        `deployments` to be eager-loaded (selectinload) before access."""
+        return sorted({d.channel_type for d in self.deployments if d.is_active})
+
+    @property
+    def is_active(self) -> bool:
+        """An agent is active when deployed to at least one channel. Derived,
+        not a manual flag. Requires `deployments` eager-loaded."""
+        return any(d.is_active for d in self.deployments)
+
     def __repr__(self) -> str:
         return f"<Agent(id={self.id}, name={self.name}, status={self.status})>"

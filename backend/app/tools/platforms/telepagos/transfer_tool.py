@@ -70,7 +70,7 @@ class TelePagosTransferTool(BasePlatformTool):
                     },
                     "alias": {
                         "type": "string",
-                        "description": "Alias de CBU/CVU del destinatario (texto con puntos, ej. 'yani.mp'). Usá alias O cvu, exactamente uno.",
+                        "description": "Alias de CBU/CVU del destinatario (texto con puntos, ej. 'juan.perez'). Usá alias O cvu, exactamente uno.",
                     },
                     "cvu": {
                         "type": "string",

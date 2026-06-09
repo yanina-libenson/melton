@@ -166,10 +166,19 @@ class ToolFactory:
             else:
                 raise ValueError(f"Unknown Mercado Libre tool: {tool_name}")
 
-        # TelePagos platform (money transfers)
+        # TelePagos platform (balance, transfers; payees via generic memory tools)
         elif platform_id == "telepagos":
-            from app.tools.platforms.telepagos import TelePagosTransferTool
+            from app.tools.platforms.telepagos import (
+                TelePagosBalanceTool,
+                TelePagosTransferTool,
+            )
 
+            if "balance" in tool_name or "saldo" in tool_name:
+                return TelePagosBalanceTool(
+                    tool_id=str(tool_model.id),
+                    tool_config=tool_model.config,
+                    integration=tool_model.integration,
+                )
             return TelePagosTransferTool(
                 tool_id=str(tool_model.id),
                 tool_config=tool_model.config,

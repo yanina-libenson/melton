@@ -14,7 +14,7 @@ def _fake_client(*, text="hola", audio=b"MP3BYTES", fail_stt=False, fail_tts=Fal
         # echo back so we can assert the filename/format reached the API
         return SimpleNamespace(text=text)
 
-    async def speech_create(model, voice, input):
+    async def speech_create(model, voice, input, instructions=None):
         if fail_tts:
             raise RuntimeError("boom")
         return SimpleNamespace(content=audio)
@@ -43,6 +43,25 @@ async def test_transcribe_applies_es_correction():
 async def test_synthesize_returns_bytes():
     vs = VoiceService(client=_fake_client(audio=b"\x00\x01mp3"))
     assert await vs.synthesize("hola") == b"\x00\x01mp3"
+
+
+@pytest.mark.asyncio
+async def test_synthesize_passes_argentine_instructions():
+    captured = {}
+
+    async def speech_create(model, voice, input, instructions=None):
+        captured.update(model=model, voice=voice, instructions=instructions)
+        return SimpleNamespace(content=b"x")
+
+    client = SimpleNamespace(
+        audio=SimpleNamespace(
+            transcriptions=SimpleNamespace(create=None),
+            speech=SimpleNamespace(create=speech_create),
+        )
+    )
+    await VoiceService(client=client).synthesize("hola")
+    assert captured["model"] == "gpt-4o-mini-tts"
+    assert "argentino" in (captured["instructions"] or "").lower()
 
 
 @pytest.mark.asyncio

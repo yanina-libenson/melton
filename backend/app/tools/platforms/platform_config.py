@@ -55,8 +55,8 @@ PLATFORMS: dict[str, PlatformConfig] = {
     ),
     "telepagos": PlatformConfig(
         id="telepagos",
-        name="Transferir (TelePagos)",
-        description="Transferencias de dinero en pesos (ARS) a un alias o CVU/CBU. Requiere confirmación.",
+        name="TelePagos",
+        description="Cuenta de pagos en pesos (ARS): consultar saldo, transferir a un alias o CVU/CBU (con confirmación) y agendar destinatarios.",
         category="Pagos",
         oauth_config=None,  # auth is username/password (entered in the panel), not OAuth
         base_api_url="https://api.telepagos.com.ar",

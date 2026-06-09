@@ -17,6 +17,7 @@ from app.models import (
     Integration,
     Message,
     Tool,
+    UserMemory,
 )
 
 # Import settings to get DATABASE_URL_SYNC

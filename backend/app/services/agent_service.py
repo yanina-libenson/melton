@@ -34,7 +34,7 @@ class AgentService:
 
         self.session.add(agent)
         await self.session.flush()
-        await self.session.refresh(agent, ["integrations"])
+        await self.session.refresh(agent, ["integrations", "deployments"])
 
         # Grant admin permission to creator
         from app.models.agent_permission import AgentPermission
@@ -56,7 +56,8 @@ class AgentService:
             select(Agent)
             .where(Agent.id == agent_id)
             .options(
-                selectinload(Agent.integrations).selectinload(Integration.tools)
+                selectinload(Agent.integrations).selectinload(Integration.tools),
+                selectinload(Agent.deployments),
             )
         )
         result = await self.session.execute(query)
@@ -70,7 +71,8 @@ class AgentService:
             select(Agent)
             .where(Agent.user_id == user_id, Agent.organization_id == organization_id)
             .options(
-                selectinload(Agent.integrations).selectinload(Integration.tools)
+                selectinload(Agent.integrations).selectinload(Integration.tools),
+                selectinload(Agent.deployments),
             )
             .order_by(Agent.created_at.desc())
         )
@@ -107,9 +109,10 @@ class AgentService:
 
         agent.updated_at = datetime.utcnow()
         await self.session.flush()
-        await self.session.refresh(agent)
 
-        return agent
+        # Re-fetch so integrations + deployments are eager-loaded for the
+        # response (the derived is_active/channels need deployments loaded).
+        return await self.get_agent_by_id(agent_id)
 
     async def delete_agent(self, agent_id: uuid.UUID) -> bool:
         """Delete an agent."""

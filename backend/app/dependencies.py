@@ -63,6 +63,12 @@ async def get_permission_service(session: DatabaseSession):
     return PermissionService(session)
 
 
+async def get_deployment_service(session: DatabaseSession):
+    """Dependency to get DeploymentService instance."""
+    from app.services.deployment_service import DeploymentService
+    return DeploymentService(session)
+
+
 async def require_agent_permission(
     agent_id: uuid.UUID,
     current_user: Annotated[dict[str, uuid.UUID], Depends(get_current_user)],
@@ -109,3 +115,4 @@ async def require_agent_admin(
 CurrentUser = Annotated[dict[str, uuid.UUID], Depends(get_current_user)]
 AgentServiceDep = Annotated[AgentService, Depends(get_agent_service)]
 PermissionServiceDep = Annotated["PermissionService", Depends(get_permission_service)]
+DeploymentServiceDep = Annotated["DeploymentService", Depends(get_deployment_service)]

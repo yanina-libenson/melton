@@ -87,15 +87,16 @@ export function Nav() {
         <div className="flex h-14 items-center justify-between">
           <div className="flex items-center gap-8">
             {/* Logo */}
-            <Link href="/" className="transition-opacity hover:opacity-80">
+            <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-80">
               <Image
-                src="/melton-logo.png"
+                src="/melton-icon.png"
                 alt="Melton"
-                width={150}
-                height={40}
+                width={64}
+                height={64}
                 priority
-                className="h-8 w-auto"
+                className="h-8 w-8 rounded-lg"
               />
+              <span className="text-foreground text-lg font-semibold tracking-tight">Melton</span>
             </Link>
 
             {/* Breadcrumbs - Only show when authenticated */}

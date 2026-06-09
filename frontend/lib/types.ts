@@ -37,6 +37,21 @@ export interface Agent {
   createdAt: string
   updatedAt: string
   integrations: IntegrationSource[]
+  // Derived from deployments: active = deployed to ≥1 channel.
+  isActive?: boolean
+  channels?: string[]
+}
+
+export type DeploymentChannel = 'web' | 'whatsapp' | 'email' | 'mobile' | 'apple_watch'
+
+export interface Deployment {
+  id: string
+  agentId: string
+  channelType: string
+  isActive: boolean
+  config: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
 }
 
 export interface IntegrationSource {

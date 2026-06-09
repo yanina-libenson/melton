@@ -66,10 +66,10 @@ class _FakeProvider:
 
 
 def _wire(svc: AgentExecutionService, tool: _FakeConfirmTool, provider: _FakeProvider, monkeypatch):
-    async def fake_register(agent, registry: ToolRegistry, user_api_keys=None):
+    async def fake_register(agent, registry: ToolRegistry, user_api_keys=None, operator_user_id=None):
         registry.register("transfer_money", tool)
 
-    async def fake_schemas(agent):
+    async def fake_schemas(agent, operator_user_id=None):
         return [tool.get_schema()]
 
     monkeypatch.setattr(svc, "_register_agent_tools", fake_register)

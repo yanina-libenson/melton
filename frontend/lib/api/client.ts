@@ -3,7 +3,7 @@
  * Provides typed methods for all backend endpoints
  */
 
-import type { Agent, IntegrationSource, Tool } from '@/lib/types'
+import type { Agent, Deployment, IntegrationSource, Tool } from '@/lib/types'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const API_VERSION = '/api/v1'
@@ -184,6 +184,23 @@ class APIClient {
 
   async deleteAgent(agentId: string): Promise<void> {
     return this.request(`${API_VERSION}/agents/${agentId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  // Deployment endpoints (channels)
+  async listDeployments(agentId: string): Promise<Deployment[]> {
+    return this.request(`${API_VERSION}/agents/${agentId}/deployments`)
+  }
+
+  async deployToChannel(agentId: string, channel: string): Promise<Deployment> {
+    return this.request(`${API_VERSION}/agents/${agentId}/deployments/${channel}`, {
+      method: 'PUT',
+    })
+  }
+
+  async undeployFromChannel(agentId: string, channel: string): Promise<void> {
+    return this.request(`${API_VERSION}/agents/${agentId}/deployments/${channel}`, {
       method: 'DELETE',
     })
   }

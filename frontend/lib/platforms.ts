@@ -170,9 +170,9 @@ export const PLATFORM_INTEGRATIONS: PlatformIntegration[] = [
   },
   {
     id: 'telepagos',
-    name: 'Transferir (TelePagos)',
+    name: 'TelePagos',
     description:
-      'Transferí pesos (ARS) a un alias o CVU/CBU. Acción irreversible: pide confirmación antes de ejecutar.',
+      'Cuenta de pagos en pesos (ARS): consultar saldo, transferir a un alias o CVU/CBU (con confirmación) y agendar destinatarios.',
     icon: 'https://api.iconify.design/lucide/banknote.svg?color=%23888888',
     category: 'Payments',
     requiresAuth: true,
@@ -318,6 +318,12 @@ export const PLATFORM_TOOLS: Record<string, Tool[]> = {
     },
   ],
   telepagos: [
+    {
+      id: 'get_balance',
+      name: 'Consultar saldo',
+      description: 'Consultar el saldo disponible de la cuenta de TelePagos (ARS). Solo lectura.',
+      sourceId: 'telepagos',
+    },
     {
       id: 'transfer_money',
       name: 'Transferir dinero',

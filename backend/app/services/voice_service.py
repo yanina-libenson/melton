@@ -27,6 +27,17 @@ def _correct_es(text: str) -> str:
     return out
 
 
+# OpenAI has no region-tagged Spanish voice, but gpt-4o-mini-tts accepts free-form
+# `instructions` to steer accent/tone. This pushes it toward Rioplatense (Buenos
+# Aires) Spanish with voseo — the closest to an Argentine voice without adding a
+# new TTS provider (Azure has real es-AR voices if we ever want native).
+DEFAULT_TTS_INSTRUCTIONS = (
+    "Hablá en español rioplatense, con acento argentino de Buenos Aires y voseo. "
+    "Tono natural, cálido y cercano, ritmo de conversación tranquila. Que suene "
+    "como una persona porteña real, sin exagerar el acento."
+)
+
+
 class VoiceServiceError(Exception):
     """STT/TTS failure."""
 
@@ -40,8 +51,9 @@ class VoiceService:
         *,
         client: Any | None = None,
         stt_model: str = "whisper-1",
-        tts_model: str = "tts-1",
-        tts_voice: str = "alloy",
+        tts_model: str = "gpt-4o-mini-tts",
+        tts_voice: str = "nova",
+        tts_instructions: str = DEFAULT_TTS_INSTRUCTIONS,
     ):
         if client is not None:
             self._client = client
@@ -52,6 +64,7 @@ class VoiceService:
         self._stt_model = stt_model
         self._tts_model = tts_model
         self._tts_voice = tts_voice
+        self._tts_instructions = tts_instructions
 
     async def transcribe(
         self, audio_bytes: bytes, filename: str = "audio.m4a", language: str = "es"
@@ -70,10 +83,16 @@ class VoiceService:
 
     async def synthesize(self, text: str) -> bytes:
         """Synthesize speech audio (mp3 bytes) from text."""
+        kwargs: dict[str, Any] = {
+            "model": self._tts_model,
+            "voice": self._tts_voice,
+            "input": text or " ",
+        }
+        # `instructions` (accent/tone steering) is only supported by gpt-4o-mini-tts.
+        if self._tts_instructions:
+            kwargs["instructions"] = self._tts_instructions
         try:
-            resp = await self._client.audio.speech.create(
-                model=self._tts_model, voice=self._tts_voice, input=text or " "
-            )
+            resp = await self._client.audio.speech.create(**kwargs)
         except Exception as e:  # noqa: BLE001
             raise VoiceServiceError(f"TTS failed: {e}") from e
         # openai>=1 returns an HttpxBinaryResponseContent; .content is the bytes.
