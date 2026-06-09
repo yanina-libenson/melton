@@ -67,7 +67,9 @@ services:
       - key: MAX_TOOL_RETRIES
         value: 3
 
-      # OAuth - ADD YOUR CREDENTIALS IN RENDER DASHBOARD
+      # OAuth — MercadoLibre OAuth APP credentials (system-level, shared by all
+      # users connecting their ML account). Only needed if you use the ML
+      # integration; leave unset otherwise.
       - key: MERCADOLIBRE_CLIENT_ID
         sync: false
       - key: MERCADOLIBRE_CLIENT_SECRET
@@ -75,13 +77,11 @@ services:
       - key: OAUTH_STATE_EXPIRY_SECONDS
         value: 600
 
-      # LLM API Keys (optional - users can provide their own)
-      - key: ANTHROPIC_API_KEY
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: GOOGLE_API_KEY
-        sync: false
+      # NOTE: LLM/OpenAI keys (Anthropic/OpenAI/Google) are PER-USER — each user
+      # sets their own in the panel (Settings, stored encrypted). They are NOT
+      # system env vars here. The code uses the user's key; there is no system
+      # fallback by design. (Re-add a key here only if you want a system-wide
+      # fallback for users who didn't bring their own.)
 
       # LangFuse (optional)
       - key: LANGFUSE_PUBLIC_KEY
