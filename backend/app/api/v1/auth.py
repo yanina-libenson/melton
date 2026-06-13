@@ -144,6 +144,20 @@ async def get_current_user_info(
     return UserResponse.model_validate(user)
 
 
+@router.delete("/account", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_account(
+    current_user: CurrentUser,
+    auth_service: AuthServiceDep,
+) -> None:
+    """Permanently delete the authenticated user's account and all their data.
+
+    Irreversible. Required by App Store guideline 5.1.1(v) for apps that offer
+    account creation. The user's agents, integrations (incl. encrypted
+    credentials), conversations and memory cascade-delete.
+    """
+    await auth_service.delete_user(current_user["user_id"])
+
+
 @router.post("/subdomain/claim", response_model=UserResponse)
 async def claim_subdomain(
     subdomain_data: SubdomainClaim,

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from jose import jwt, JWTError
 from passlib.context import CryptContext
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -194,6 +194,20 @@ class AuthService:
         """Get a user by their ID."""
         result = await self.session.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
+
+    async def delete_user(self, user_id: uuid.UUID) -> bool:
+        """Permanently delete a user and all their data.
+
+        Issued as a single SQL DELETE so Postgres' ON DELETE CASCADE removes the
+        whole graph (agents -> integrations -> encrypted credentials, agents ->
+        conversations -> messages/traces, deployments, permissions, memory). A
+        Core delete avoids async ORM lazy-load pitfalls during cascade. Returns
+        True if a row was deleted. Required by App Store guideline 5.1.1(v):
+        account creation must allow in-app account deletion.
+        """
+        result = await self.session.execute(delete(User).where(User.id == user_id))
+        await self.session.flush()
+        return result.rowcount > 0
 
     async def claim_subdomain(self, user_id: uuid.UUID, subdomain: str) -> User:
         """
