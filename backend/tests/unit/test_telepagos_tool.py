@@ -114,6 +114,46 @@ async def test_successful_transfer_passes_reference_id():
     assert "✅" in res["message"]
 
 
+def test_confirmation_is_terse_and_in_pesos():
+    """Voice confirmation: only amount + name, says 'pesos', no alias/CVU/'$'."""
+    integ = Integration(id=uuid.uuid4(), platform_id="telepagos", config={})
+    tool = TelePagosTransferTool("tool-1", {}, integ)
+    speech = tool.confirmation_speech(
+        {"amount": 50000, "alias": "yani.mp", "cuit": "27323575954", "recipient_name": "Yanina Libenson"}
+    )
+    assert speech == "Transferir 50.000 pesos a Yanina Libenson. ¿Confirmás?"
+    assert "yani.mp" not in speech and "$" not in speech and "27323575954" not in speech
+
+
+def test_confirmation_summary_prefers_name_over_alias():
+    integ = Integration(id=uuid.uuid4(), platform_id="telepagos", config={})
+    tool = TelePagosTransferTool("tool-1", {}, integ)
+    s = tool.confirmation_summary({"amount": 1, "alias": "yani.mp", "recipient_name": "Yanina"})
+    assert s["destinatario"] == "Yanina"
+    assert "cuit" not in s and "concepto" not in s  # minimal
+
+
+def test_confirmation_falls_back_to_alias_without_name():
+    integ = Integration(id=uuid.uuid4(), platform_id="telepagos", config={})
+    tool = TelePagosTransferTool("tool-1", {}, integ)
+    speech = tool.confirmation_speech({"amount": 1, "cvu": "0" * 22})
+    assert "0000000000000000000000" in speech  # no saved name -> CVU
+
+
+@pytest.mark.asyncio
+async def test_success_message_uses_name_and_pesos():
+    _FakeTP.instances.clear()
+    tool = _make_tool()
+    res = await tool.execute(
+        {"amount": 50000, "alias": "yani.mp", "cuit": "27323575954",
+         "recipient_name": "Yanina Libenson", "reference_id": uuid.uuid4().hex}
+    )
+    assert res["success"] is True
+    assert "50.000 pesos" in res["message"]
+    assert "Yanina Libenson" in res["message"]
+    assert "$" not in res["message"]
+
+
 @pytest.mark.asyncio
 async def test_maps_holder_mismatch_error():
     tool = _make_tool(client_factory=_ErrTP)

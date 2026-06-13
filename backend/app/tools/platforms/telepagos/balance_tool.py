@@ -12,6 +12,7 @@ from typing import Any
 from app.models.integration import Integration
 from app.tools.platforms.base_platform_tool import BasePlatformTool
 from app.tools.platforms.telepagos.client import TelePagos, TelePagosError
+from app.utils.money import format_ars
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,6 @@ class TelePagosBalanceTool(BasePlatformTool):
         balance = result["balance"]
         return {
             "success": True,
-            "message": f"Saldo disponible: ${balance} ARS.",
+            "message": f"Saldo disponible: {format_ars(balance)}.",
             "balance": balance,
         }

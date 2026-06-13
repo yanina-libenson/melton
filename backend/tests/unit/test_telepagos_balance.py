@@ -48,7 +48,7 @@ async def test_balance_success():
     res = await tool.execute({})
     assert res["success"] is True
     assert res["balance"] == 1234
-    assert "1234" in res["message"]
+    assert "1.234 pesos" in res["message"]
 
 
 @pytest.mark.asyncio

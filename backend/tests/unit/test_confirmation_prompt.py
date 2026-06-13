@@ -6,25 +6,22 @@ from app.services.execution_service import format_confirmation_prompt
 def test_renders_money_summary_before_confirming():
     out = format_confirmation_prompt(
         {
-            "accion": "Transferencia de dinero (ARS)",
+            "accion": "Transferencia de pesos",
             "monto": 1,
-            "destino": "yanina",
-            "cuit": "***954",
-            "concepto": "VAR",
+            "destinatario": "Yanina Libenson",
             "irreversible": True,
         }
     )
-    assert "Monto: $1 ARS" in out
-    assert "Destino: yanina" in out
-    assert "CUIT: ***954" in out
+    assert "Monto: 1 pesos" in out
+    assert "Destinatario: Yanina Libenson" in out
     assert "irreversible" in out.lower()
     assert "¿Confirmás?" in out
 
 
 def test_skips_none_values():
-    out = format_confirmation_prompt({"monto": 5, "destino": None, "concepto": "VAR"})
-    assert "Destino" not in out
-    assert "Monto: $5 ARS" in out
+    out = format_confirmation_prompt({"monto": 5, "destinatario": None, "concepto": "VAR"})
+    assert "Destinatario" not in out
+    assert "Monto: 5 pesos" in out
 
 
 def test_empty_summary_falls_back():

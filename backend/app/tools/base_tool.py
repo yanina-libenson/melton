@@ -27,6 +27,13 @@ class BaseTool(ABC):
         raw input."""
         return input_data
 
+    def confirmation_speech(self, input_data: dict[str, Any]) -> str | None:
+        """Optional terse, speech-friendly confirmation line for voice/watch
+        channels. When set, voice gateways speak THIS instead of the full
+        summary + model narration. Return None to fall back to the rendered
+        summary."""
+        return None
+
     @abstractmethod
     async def execute(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """

@@ -40,6 +40,44 @@ async def test_transcribe_applies_es_correction():
 
 
 @pytest.mark.asyncio
+async def test_transcribe_forwards_prompt_hint():
+    """The contact-name hint reaches Whisper's `prompt` (biases proper nouns)."""
+    captured = {}
+
+    async def transcribe_create(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(text="ok")
+
+    client = SimpleNamespace(
+        audio=SimpleNamespace(
+            transcriptions=SimpleNamespace(create=transcribe_create),
+            speech=SimpleNamespace(create=None),
+        )
+    )
+    await VoiceService(client=client).transcribe(b"audio", prompt="Contactos: Yanina Libenson.")
+    assert captured["prompt"] == "Contactos: Yanina Libenson."
+
+
+@pytest.mark.asyncio
+async def test_transcribe_omits_prompt_when_absent():
+    """No hint -> no `prompt` kwarg sent (don't bias when we have nothing)."""
+    captured = {}
+
+    async def transcribe_create(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(text="ok")
+
+    client = SimpleNamespace(
+        audio=SimpleNamespace(
+            transcriptions=SimpleNamespace(create=transcribe_create),
+            speech=SimpleNamespace(create=None),
+        )
+    )
+    await VoiceService(client=client).transcribe(b"audio")
+    assert "prompt" not in captured
+
+
+@pytest.mark.asyncio
 async def test_synthesize_returns_bytes():
     vs = VoiceService(client=_fake_client(audio=b"\x00\x01mp3"))
     assert await vs.synthesize("hola") == b"\x00\x01mp3"

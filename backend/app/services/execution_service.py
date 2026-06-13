@@ -15,6 +15,7 @@ from app.services.conversation_service import ConversationService
 from app.services.event_bus import event_bus
 from app.services.llm_model_service import LLMModelService
 from app.tools.registry import ToolRegistry
+from app.utils.money import format_ars
 from app.utils.observability import observability_service, trace_execution
 
 
@@ -34,6 +35,7 @@ _CONFIRM_LABELS = {
     "accion": "Acción",
     "monto": "Monto",
     "destino": "Destino",
+    "destinatario": "Destinatario",
     "cuit": "CUIT",
     "concepto": "Concepto",
     "description": "Detalle",
@@ -54,7 +56,7 @@ def format_confirmation_prompt(summary: dict | None) -> str:
             continue
         label = _CONFIRM_LABELS.get(key, key.replace("_", " ").capitalize())
         if key == "monto":
-            value = f"${value} ARS"
+            value = format_ars(value)
         lines.append(f"• {label}: {value}")
 
     body = "\n".join(lines)
@@ -774,6 +776,8 @@ class AgentExecutionService:
         summary = (
             tool.confirmation_summary(tool_use["input"]) if tool is not None else tool_use["input"]
         )
+        # Terse, speech-friendly line for voice/watch (None -> falls back to summary).
+        speech = tool.confirmation_speech(tool_use["input"]) if tool is not None else None
         reference_id = uuid.uuid4().hex
 
         # Always present the operation summary BEFORE asking to confirm. Any
@@ -814,6 +818,7 @@ class AgentExecutionService:
             tool_name=tool_use["name"],
             summary=summary,
             reference_id=reference_id,
+            speech=speech,
         )
         await event_bus.publish(
             event_bus.create_event(

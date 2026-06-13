@@ -67,15 +67,26 @@ class VoiceService:
         self._tts_instructions = tts_instructions
 
     async def transcribe(
-        self, audio_bytes: bytes, filename: str = "audio.m4a", language: str = "es"
+        self,
+        audio_bytes: bytes,
+        filename: str = "audio.m4a",
+        language: str = "es",
+        prompt: str | None = None,
     ) -> str:
-        """Transcribe audio bytes to text."""
+        """Transcribe audio bytes to text.
+
+        `prompt` biases the transcription toward expected vocabulary/spelling
+        (Whisper's documented use for proper nouns). We feed it the user's saved
+        contact names so a dictated name like "Yanina" isn't misheard as
+        "Janina" — this generalizes per user, no hardcoded names.
+        """
         buf = io.BytesIO(audio_bytes)
         buf.name = filename  # OpenAI infers format from the filename extension
+        kwargs: dict[str, Any] = {"model": self._stt_model, "file": buf, "language": language}
+        if prompt:
+            kwargs["prompt"] = prompt
         try:
-            resp = await self._client.audio.transcriptions.create(
-                model=self._stt_model, file=buf, language=language
-            )
+            resp = await self._client.audio.transcriptions.create(**kwargs)
         except Exception as e:  # noqa: BLE001
             raise VoiceServiceError(f"STT failed: {e}") from e
         text = (getattr(resp, "text", None) or "").strip()

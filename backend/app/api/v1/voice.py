@@ -33,6 +33,29 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+async def _transcription_hint(session, user_id, agent) -> str | None:
+    """Build a Whisper prompt from the user's saved contact names so dictated
+    names transcribe correctly (e.g. "Yanina" not "Janina"). Scoped exactly like
+    the memory tools: (operator user, agent org, agent). Best-effort — any
+    failure just means no hint, never a failed transcription."""
+    try:
+        from app.services.memory_service import MemoryService
+
+        rows = await MemoryService(session).list_all(
+            user_id=user_id,
+            organization_id=agent.organization_id,
+            agent_id=agent.id,
+            collection="contactos",
+        )
+        names = [r.label.strip() for r in rows if (r.label or "").strip()]
+        if not names:
+            return None
+        return "Transferencias en pesos a estos contactos: " + ", ".join(names) + "."
+    except Exception:  # noqa: BLE001 — a hint is optional, never block transcription
+        logger.warning("Could not build transcription hint from contacts", exc_info=True)
+        return None
+
+
 def _header_safe(text: str) -> str:
     """Make text safe for an HTTP header: drop non-latin-1 (emojis) AND collapse
     control chars like newlines/tabs to spaces (newlines in a header value raise
@@ -105,10 +128,11 @@ async def agent_voice(
 
     voice = VoiceService(api_key=openai_key)
 
-    # 1. Speech -> text
+    # 1. Speech -> text (seed Whisper with the user's contact names)
     audio_bytes = await audio.read()
+    hint = await _transcription_hint(session, user_id, agent)
     try:
-        text = await voice.transcribe(audio_bytes, audio.filename or "audio.m4a")
+        text = await voice.transcribe(audio_bytes, audio.filename or "audio.m4a", prompt=hint)
     except VoiceServiceError as e:
         return _voice_response(b"", "error", False, f"No pude transcribir el audio: {e}")
     if not text:
@@ -154,6 +178,7 @@ async def agent_voice(
     exec_service = AgentExecutionService(session)
     response_text = ""
     needs_confirmation = False
+    confirmation_speech = None
     error_msg = None
     async for ev in exec_service.execute_conversation(
         agent_id=agent_id,
@@ -166,6 +191,7 @@ async def agent_voice(
             response_text += ev.data.get("delta", "")
         elif ev.type == "confirmation_required":
             needs_confirmation = True
+            confirmation_speech = ev.data.get("speech")
         elif ev.type == "error":
             error_msg = ev.data.get("error", "error")
     await session.commit()
@@ -175,7 +201,12 @@ async def agent_voice(
     if error_msg and not response_text:
         return _voice_response(b"", "error", False, error_msg, conversation_id=conv_id)
 
-    spoken = response_text.strip() or "Listo."
+    # On a confirmation turn, speak ONLY the tool's terse line (e.g. "Transferir
+    # 50.000 pesos a Yanina. ¿Confirmás?") — not the model's narration + summary.
+    if needs_confirmation and confirmation_speech and confirmation_speech.strip():
+        spoken = confirmation_speech.strip()
+    else:
+        spoken = response_text.strip() or "Listo."
 
     # 4. Text -> speech
     try:

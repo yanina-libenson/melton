@@ -14,20 +14,13 @@ from typing import Any
 from app.models.integration import Integration
 from app.tools.platforms.base_platform_tool import BasePlatformTool
 from app.tools.platforms.telepagos.client import TelePagos, TelePagosError
+from app.utils.money import format_ars
 
 logger = logging.getLogger(__name__)
 
 # Safety ceiling per transfer. Above this we refuse (defensive default; could be
 # made per-integration configurable later).
 MAX_AMOUNT_ARS = 50_000
-
-
-def _mask_cuit(cuit: str) -> str:
-    """Show only the last 3 digits of a CUIT in summaries/traces."""
-    digits = "".join(ch for ch in str(cuit) if ch.isdigit())
-    if len(digits) <= 3:
-        return "***"
-    return "*" * (len(digits) - 3) + digits[-3:]
 
 
 def _suggest_for_error(message: str) -> str:
@@ -80,6 +73,16 @@ class TelePagosTransferTool(BasePlatformTool):
                         "type": "string",
                         "description": "CUIT/CUIL del titular del destino, 11 dígitos sin guiones. Obligatorio.",
                     },
+                    "recipient_name": {
+                        "type": "string",
+                        "description": (
+                            "Nombre completo del destinatario, para mostrarlo en la confirmación "
+                            "(NO afecta la transferencia). Si resolviste el destino desde un contacto "
+                            "agendado, pasá acá el nombre del contacto (su 'label'). La API de TelePagos "
+                            "no devuelve el titular, así que este nombre es la única forma de confirmar "
+                            "por nombre en vez de por alias/CVU."
+                        ),
+                    },
                     "concept": {
                         "type": "string",
                         "description": "Concepto de la operación: VAR (varios, default), ALQ (alquiler), HON (honorarios), FAC (factura), etc.",
@@ -93,15 +96,25 @@ class TelePagosTransferTool(BasePlatformTool):
             },
         }
 
+    def _destino_label(self, input_data: dict[str, Any]) -> str:
+        """Prefer the recipient's full name; fall back to alias/CVU when the
+        transfer is to a destination the user dictated raw (not agendado)."""
+        name = (input_data.get("recipient_name") or "").strip()
+        return name or input_data.get("alias") or input_data.get("cvu") or "el destino"
+
     def confirmation_summary(self, input_data: dict[str, Any]) -> dict[str, Any]:
+        # Minimal on purpose: to authorize a transfer the user only needs the
+        # amount and who it's going to — not the alias/CVU/CUIT/concept.
         return {
-            "accion": "Transferencia de dinero (ARS)",
+            "accion": "Transferencia de pesos",
             "monto": input_data.get("amount"),
-            "destino": input_data.get("alias") or input_data.get("cvu"),
-            "cuit": _mask_cuit(input_data.get("cuit", "")),
-            "concepto": input_data.get("concept") or "VAR",
+            "destinatario": self._destino_label(input_data),
             "irreversible": True,
         }
+
+    def confirmation_speech(self, input_data: dict[str, Any]) -> str:
+        # Single terse line for voice/watch — says "pesos" (never "$"), no alias/CVU.
+        return f"Transferir {format_ars(input_data.get('amount'))} a {self._destino_label(input_data)}. ¿Confirmás?"
 
     async def _get_credentials(self) -> dict | None:
         """Read the encrypted {username, password, env} for this integration."""
@@ -193,10 +206,10 @@ class TelePagosTransferTool(BasePlatformTool):
                 "suggestion": _suggest_for_error(result["error"]),
             }
 
-        destino = alias or cvu
-        msg = f"✅ Transferí ${amount} ARS a {destino}. ID de operación: {result['id']}."
+        destino = self._destino_label(input_data)
+        msg = f"✅ Transferí {format_ars(amount)} a {destino}. ID de operación: {result['id']}."
         if result.get("balance_after") is not None:
-            msg += f" Saldo actual: ${result['balance_after']}."
+            msg += f" Saldo actual: {format_ars(result['balance_after'])}."
         return {
             "success": True,
             "message": msg,

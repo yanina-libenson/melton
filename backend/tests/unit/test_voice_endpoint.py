@@ -23,7 +23,7 @@ class _FakeVoice:
     def __init__(self, *a, **k):
         pass
 
-    async def transcribe(self, audio_bytes, filename="audio.m4a", language="es"):
+    async def transcribe(self, audio_bytes, filename="audio.m4a", language="es", prompt=None):
         return "transferí 1 peso a yani.mp"
 
     async def synthesize(self, text):
@@ -111,6 +111,31 @@ async def test_voice_confirmation_required(test_session, sample_agent, monkeypat
     assert r.content == b"FAKE_MP3_BYTES"
     assert r.headers["x-status"] == "needs_confirmation"
     assert r.headers["x-needs-confirmation"] == "True"
+
+
+@pytest.mark.asyncio
+async def test_voice_confirmation_speaks_terse_line(test_session, sample_agent, monkeypatch):
+    """On a confirmation turn, the watch speaks the tool's terse line — not the
+    model's verbose narration nor the bullet summary."""
+    terse = "Transferir 1 peso a Yanina Libenson. ¿Confirmás?"
+
+    def events(conv_id):
+        return [
+            ExecutionEvent("content_delta", delta="Perfecto, voy a preparar la transferencia de 1 peso al alias yani.mp con CUIT ..."),
+            ExecutionEvent("confirmation_required", tool_name="transfer_money", summary={}, speech=terse),
+            ExecutionEvent("message_complete", message_id="m1"),
+        ]
+
+    _wire(monkeypatch, test_session, sample_agent, events)
+    try:
+        r = await _post_voice(sample_agent.id)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert r.status_code == 200
+    assert r.headers["x-status"] == "needs_confirmation"
+    assert r.headers["x-message"] == terse  # only the terse line is spoken
+    assert "alias" not in r.headers["x-message"]  # narration dropped
 
 
 @pytest.mark.asyncio
