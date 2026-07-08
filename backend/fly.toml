@@ -1,0 +1,34 @@
+# fly.toml app configuration file generated for melton-backend on 2026-07-07T22:49:42-03:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'melton-backend'
+primary_region = 'sjc'
+
+[build]
+[env]
+  ACCESS_TOKEN_EXPIRE_MINUTES = '15'
+  ALGORITHM = 'HS256'
+  API_V1_PREFIX = '/api/v1'
+  BACKEND_URL = 'https://api.meltonagents.com'
+  BASE_DOMAIN = 'meltonagents.com'
+  CORS_ORIGINS = 'https://meltonagents.com,https://www.meltonagents.com'
+  DEBUG = 'false'
+  ENVIRONMENT = 'production'
+  FRONTEND_URL = 'https://meltonagents.com'
+  MAX_TOOL_RETRIES = '3'
+  OAUTH_STATE_EXPIRY_SECONDS = '600'
+  R2_BUCKET_NAME = 'melton-uploads'
+  TOOL_EXECUTION_TIMEOUT = '30'
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = 'off'
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '256mb'

@@ -6,14 +6,10 @@ from pathlib import Path
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
-from app.config import settings
 from app.dependencies import CurrentUser
+from app.storage import upload_file
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
-
-# Create uploads directory if it doesn't exist
-UPLOADS_DIR = Path("uploads")
-UPLOADS_DIR.mkdir(exist_ok=True)
 
 # Allowed image extensions
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
@@ -55,15 +51,10 @@ async def upload_image(
     # Generate unique filename
     file_id = str(uuid.uuid4())
     filename = f"{file_id}{file_extension}"
-    file_path = UPLOADS_DIR / filename
 
-    # Save file
-    with open(file_path, "wb") as f:
-        f.write(content)
-
-    # Return public URL
-    # In production, this should be the full domain URL
-    public_url = f"{settings.backend_url}/api/uploads/{filename}"
+    # Upload to Cloudflare R2 and get its public URL
+    content_type = file.content_type or "application/octet-stream"
+    public_url = upload_file(filename, content, content_type)
 
     return JSONResponse(
         content={

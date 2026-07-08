@@ -1,13 +1,11 @@
 """FastAPI application entry point."""
 
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 
@@ -85,8 +83,3 @@ app.include_router(user_settings.router, prefix=settings.api_v1_prefix)
 app.include_router(uploads.router, prefix=settings.api_v1_prefix)
 app.include_router(audit_stream.router, prefix=settings.api_v1_prefix)
 app.include_router(voice.router, prefix=f"{settings.api_v1_prefix}/agents", tags=["voice"])
-
-# Mount static files for uploaded images
-UPLOADS_DIR = Path("uploads")
-UPLOADS_DIR.mkdir(exist_ok=True)
-app.mount("/api/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")

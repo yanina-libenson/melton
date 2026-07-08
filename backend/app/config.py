@@ -1,7 +1,19 @@
 """Application configuration using Pydantic Settings."""
 
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# libpq-only query params (e.g. Neon appends these) that asyncpg's driver
+# doesn't understand; psycopg2 (used for the sync/Alembic URL) is fine with them.
+_ASYNCPG_INCOMPATIBLE_PARAMS = {"sslmode", "channel_binding"}
+
+
+def _strip_asyncpg_incompatible_params(url: str) -> str:
+    parts = urlsplit(url)
+    query = [(k, v) for k, v in parse_qsl(parts.query) if k not in _ASYNCPG_INCOMPATIBLE_PARAMS]
+    return urlunsplit(parts._replace(query=urlencode(query)))
 
 
 class Settings(BaseSettings):
@@ -37,6 +49,13 @@ class Settings(BaseSettings):
     # Encryption
     encryption_key: str = "development-encryption-key-change-in-production"
 
+    # File storage (Cloudflare R2 - S3-compatible)
+    r2_account_id: str | None = None
+    r2_access_key_id: str | None = None
+    r2_secret_access_key: str | None = None
+    r2_bucket_name: str = "melton-uploads"
+    r2_public_url: str | None = None  # public bucket URL or custom domain
+
     # OAuth
     frontend_url: str = "http://localhost:3000"
     backend_url: str = "http://localhost:8000"
@@ -67,6 +86,7 @@ class Settings(BaseSettings):
             self.database_url = "postgresql://" + self.database_url[len("postgres://"):]
         if self.database_url.startswith("postgresql://"):
             self.database_url = "postgresql+asyncpg://" + self.database_url[len("postgresql://"):]
+        self.database_url = _strip_asyncpg_incompatible_params(self.database_url)
 
         if self.database_url_sync.startswith("postgres://"):
             self.database_url_sync = "postgresql://" + self.database_url_sync[len("postgres://"):]

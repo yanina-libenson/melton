@@ -31,6 +31,7 @@ websockets = "^14.1"  # WebSocket support
 jsonpath-ng = "^1.7.0"
 email-validator = "^2.3.0"
 bcrypt = "3.2.2"
+boto3 = "^1.35.0"  # S3-compatible client for Cloudflare R2 uploads
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
